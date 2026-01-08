@@ -1,21 +1,19 @@
 # CHANGELOG - EL FOTÓGRAFO (Studio Master)
 
-## [v1.6.0] - 2026-01-08 (Versión Actual)
+## [v1.7.0] - 2026-01-08 (Versión Actual)
 
 ### 🚀 Nuevas Características
-- **Ontología de Estudio:** Reemplazo de terminología de ingeniería (ADN/Render) por fotográfica (Negativo/Revelado) en toda la interfaz.
-- **Modo Nativo Real:** "Sensor Standard" ahora utiliza Gemini Flash de forma nativa para revelados rápidos de alta fidelidad.
-- **Sensor Full Frame:** "Sensor Pro" utiliza Gemini 3 Pro con lógica Sentinel de reintentos automáticos para blindar la identidad.
-- **Bitácora de Exposición:** Nuevo panel de telemetría analítica que muestra el rendimiento del sensor y la calidad de los revelados.
-- **Exportación "Master":** Sistema de descarga optimizado que genera archivos PNG de alta resolución con nombres técnicos.
-- **Archivo Maestro (Vault):** Persistencia robusta en LocalStorage para negativos seleccionados y análisis previos.
+- **Equipo Óptico (Gear Rack):** Selector de distancias focales (35mm, 50mm, 85mm) con inyección directa en el prompt.
+- **Química de Película:** Implementación de perfiles estéticos para Portra 400, Ilford HP5 (B&W) y CineStill 800T.
+- **Telemetría EXIF:** Tira de datos técnicos incrustada en cada revelado (Lente, Película, Sensor, ID).
+- **Re-branding Semántico:** Transición completa de terminología técnica a terminología de estudio fotográfico profesional.
 
 ### 🛡️ Integridad & Sentinel
-- **Sentinel Fallback Manager:** Sistema de gestión de errores que conmuta automáticamente entre modelos ante fallos de cuota o servicio.
-- **Validación Biométrica 1.6:** Umbrales adaptativos que ajustan la exigencia de identidad según el nivel de 'Strength' aplicado.
-- **Hardware Aesthetic:** Interfaz rediseñada bajo la estética "Darkroom/Leica" con acentos de "Safe Light" (Rojo Técnico).
+- **Protección de Haz de Luz:** Lógica de inyección de modificadores blindada para evitar colisiones de contexto.
+- **Safe Light UI:** Refactorización cromática a "Amber/Technical Red" para reducir la fatiga visual y emular un cuarto oscuro profesional.
+- **Persistence 1.7:** Actualización del esquema de la Bóveda para soportar metadatos de equipo.
 
 ### 🛠️ Correcciones y Mejoras
-- **Responsividad Crítica:** El selector de sensor se adapta de forma inteligente en móviles para evitar colisiones con el branding.
-- **Optimización de Payload:** Redimensionamiento inteligente de imágenes antes de la transmisión para mejorar la latencia del laboratorio.
-- **Fisicidad UX:** Implementación de controles de hardware (sliders y botones shutter) para una experiencia táctil profesional.
+- **Consistencia de Dominio:** Sincronización de todos los labels según la Ontología v1.6.0.
+- **Optimización de Prompting:** Mejora en el orden de keywords para priorizar la fidelidad del sujeto sobre el estilo de la película.
+- **UX Industrial:** Botones y selectores con feedback táctil mejorado.

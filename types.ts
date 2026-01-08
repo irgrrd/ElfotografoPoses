@@ -109,7 +109,6 @@ export interface CurrentSession {
   isThinkingMode: boolean;
 }
 
-// Added InternalState to resolve import error in App.tsx
 export interface InternalState {
   version: string;
   poseBank: Pose[];
