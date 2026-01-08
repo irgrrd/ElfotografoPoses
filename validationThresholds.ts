@@ -49,19 +49,11 @@ export class ThresholdManager {
     };
   }
   
-  static adjustForImageQuality(
-    baseThresholds: ValidationThresholds,
-    imageQualityScore: number // 0-100
-  ): ValidationThresholds {
-    if (imageQualityScore >= 80) return baseThresholds;
-    
-    const penalty = imageQualityScore >= 60 ? 3 : 8;
-    return {
-      excellent: baseThresholds.excellent - penalty,
-      good: baseThresholds.good - penalty,
-      warning: baseThresholds.warning - penalty,
-      failed: baseThresholds.failed - penalty
-    };
+  static getValidationLevel(score: number, thresholds: ValidationThresholds): 'excellent' | 'good' | 'warning' | 'failed' {
+    if (score >= thresholds.excellent) return 'excellent';
+    if (score >= thresholds.good) return 'good';
+    if (score >= thresholds.warning) return 'warning';
+    return 'failed';
   }
 }
 
@@ -71,19 +63,30 @@ export const validateWithAdaptiveThresholds = (
   imageQuality: number = 80
 ) => {
   const adaptive = ThresholdManager.getAdaptiveThresholds(strength);
-  const thresholds = ThresholdManager.adjustForImageQuality(adaptive, imageQuality);
   
-  let level: 'excellent' | 'good' | 'warning' | 'failed' = 'failed';
-  if (matchScore >= thresholds.excellent) level = 'excellent';
-  else if (matchScore >= thresholds.good) level = 'good';
-  else if (matchScore >= thresholds.warning) level = 'warning';
-  
+  // Apply a small penalty for lower image quality if needed (simplified)
+  const penalty = imageQuality < 60 ? 5 : 0;
+  const thresholds = {
+    excellent: adaptive.excellent - penalty,
+    good: adaptive.good - penalty,
+    warning: adaptive.warning - penalty,
+    failed: adaptive.failed - penalty
+  };
+
+  const level = ThresholdManager.getValidationLevel(matchScore, thresholds);
   const isValid = level === 'excellent' || level === 'good';
   
+  const messages = {
+    excellent: '🏆 Identidad perfecta',
+    good: '✅ Identidad preservada',
+    warning: '⚠️ Variaciones detectadas',
+    failed: '❌ Fallo de identidad'
+  };
+
   return {
     isValid,
     level,
-    thresholds: { ...thresholds, reason: adaptive.reason, adjustmentFactor: adaptive.adjustmentFactor },
-    message: `Validación ${level.toUpperCase()} (Score: ${matchScore}%, Requerido: ${thresholds.good}%)`
+    thresholds: { ...thresholds, reason: adaptive.reason },
+    message: `${messages[level]} (Score: ${matchScore}%)`
   };
 };

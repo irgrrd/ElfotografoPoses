@@ -159,4 +159,5 @@ export interface RevealResult {
   allScores: number[];
   finalScore: number;
   retriedDueToLowScore: boolean;
+  error?: string;
 }
