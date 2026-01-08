@@ -8,13 +8,17 @@ import {
   RenderItem,
   EngineMode,
   DarkroomSettings,
-  GearSettings
+  GearSettings,
+  AuditEvent,
+  AuditEventType
 } from './types';
 import { INITIAL_POSES, STYLE_MAP, SKIN_MAP, ICONS, GEAR_CONFIG } from './constants';
 import { analyzeFaceImage } from './geminiService';
 import { revealImageWithRetry, editWithNanoBanana } from './imageGenService';
 import { analytics } from './analyticsService';
 import { GearRack } from './GearRack';
+import { ImageCard } from './ImageCard';
+import { SessionHistoryPanel } from './SessionHistoryPanel';
 
 // --- UI Components ---
 
@@ -68,9 +72,19 @@ const App = () => {
   const [engineMode, setEngineMode] = useState<EngineMode>('offline'); 
   const [toast, setToast] = useState<string | null>(null);
   const [editPrompt, setEditPrompt] = useState('');
+  const [activeTab, setActiveTab] = useState<'VAULT' | 'HISTORY'>('VAULT');
   
   const [state, setState] = useState<InternalState>(() => {
-    const saved = localStorage.getItem('fotografo_vault_v1.7');
+    const savedVault = localStorage.getItem('fotografo_vault_v1.7');
+    const savedAudit = localStorage.getItem('fotografo_audit_v1.7');
+
+    let auditLog: AuditEvent[] = [];
+    if (savedAudit) {
+      try {
+        auditLog = JSON.parse(savedAudit);
+      } catch (e) { console.error("Failed to load audit log", e); }
+    }
+
     const base: InternalState = {
       version: "1.7.0",
       poseBank: INITIAL_POSES,
@@ -78,7 +92,7 @@ const App = () => {
       analysisLibrary: [],
       renderLibrary: [],
       savedRenders: [],
-      auditLog: [],
+      auditLog: auditLog,
       currentSession: {
         facialTraits: null,
         facialId: null,
@@ -99,10 +113,10 @@ const App = () => {
         isThinkingMode: true
       }
     };
-    if (saved) {
+    if (savedVault) {
       try {
-        const parsed = JSON.parse(saved);
-        return { ...base, ...parsed };
+        const parsed = JSON.parse(savedVault);
+        return { ...base, ...parsed, auditLog }; // Preserve loaded auditLog
       } catch (e) { return base; }
     }
     return base;
@@ -116,6 +130,22 @@ const App = () => {
       analysisLibrary: state.analysisLibrary
     }));
   }, [state.savedRenders, state.analysisLibrary]);
+
+  useEffect(() => {
+    localStorage.setItem('fotografo_audit_v1.7', JSON.stringify(state.auditLog));
+  }, [state.auditLog]);
+
+  const pushAudit = (type: AuditEventType, label: string, payload?: Record<string, unknown>) => {
+    const event: AuditEvent = {
+      id: crypto.randomUUID(),
+      ts: Date.now(),
+      type,
+      label,
+      payload,
+      sessionId: state.currentSession.facialId || undefined
+    };
+    setState(prev => ({ ...prev, auditLog: [event, ...prev.auditLog] }));
+  };
 
   useEffect(() => {
     const checkKey = async () => {
@@ -153,17 +183,27 @@ const App = () => {
         try {
           const result = await analyzeFaceImage(base64, true, engineMode);
           const fid = `ADN_${Math.random().toString(36).substr(2,4).toUpperCase()}`;
-          setState(prev => ({
-            ...prev,
-            analysisLibrary: [{ 
-              id: fid, 
-              traits: result.traits, 
-              analysisText: result.analysisText, 
-              timestamp: new Date().toISOString(), 
-              imageBase64: base64 
-            }, ...prev.analysisLibrary],
-            currentSession: { ...prev.currentSession, facialTraits: result.traits, facialId: fid, previewImage: base64 }
-          }));
+
+          setState(prev => {
+             return {
+              ...prev,
+              auditLog: [{
+                  id: crypto.randomUUID(),
+                  ts: Date.now(),
+                  type: 'ANALYSIS_ADD',
+                  label: `Análisis biométrico: ${fid}`,
+                  payload: { traits: result.traits }
+              }, ...prev.auditLog],
+              analysisLibrary: [{
+                id: fid,
+                traits: result.traits,
+                analysisText: result.analysisText,
+                timestamp: new Date().toISOString(),
+                imageBase64: base64
+              }, ...prev.analysisLibrary],
+              currentSession: { ...prev.currentSession, facialTraits: result.traits, facialId: fid, previewImage: base64 }
+            };
+          });
           setView(ViewMode.ARCHITECT);
         } catch (err: any) {
           alert(`Error en análisis: ${err.message}`);
@@ -183,6 +223,8 @@ const App = () => {
     }
 
     setDarkroomLoading(true);
+    pushAudit('REVEAL_START', 'Iniciando revelado de sensor', { gear: s.gearSettings, engine: engineMode });
+
     try {
       // Inyección de prompts ópticos y químicos (v1.7.0)
       const focalPrompt = GEAR_CONFIG.lenses[s.gearSettings.focalLength];
@@ -202,9 +244,15 @@ const App = () => {
         }
       };
 
+      pushAudit('REVEAL_SUCCESS', `Revelado exitoso: ${updatedItem.id}`, {
+          score: updatedItem.metadata?.identityValidation?.matchScore,
+          attempts: result.attempts
+      });
+
       setState(prev => ({ ...prev, renderLibrary: [updatedItem, ...prev.renderLibrary] }));
       setView(ViewMode.RENDER_VAULT);
     } catch (err: any) {
+      pushAudit('REVEAL_FAIL', 'Fallo en proceso de revelado', { error: err.message });
       alert(`Fallo en motor: ${err.message}`);
     } finally { 
       setDarkroomLoading(false); 
@@ -236,6 +284,7 @@ const App = () => {
       setToast("Ya guardado");
       return;
     }
+    pushAudit('RENDER_SAVE', `Negativo archivado: ${item.id}`, { id: item.id });
     setState(prev => ({ ...prev, savedRenders: [item, ...prev.savedRenders] }));
     setToast("Añadido al Archivo Maestro");
   };
@@ -366,7 +415,12 @@ const App = () => {
               <Card title="Equipo Óptico y Químico" subtitle="Gear Rack v1.7">
                 <GearRack 
                   settings={state.currentSession.gearSettings} 
-                  onChange={(gear) => setState(p => ({ ...p, currentSession: { ...p.currentSession, gearSettings: gear } }))} 
+                  onChange={(gear) => {
+                    const prev = state.currentSession.gearSettings;
+                    if (prev.focalLength !== gear.focalLength) pushAudit('LENS_SET', `Óptica modificada: ${gear.focalLength}`, { from: prev.focalLength, to: gear.focalLength });
+                    if (prev.filmStock !== gear.filmStock) pushAudit('FILM_SET', `Química modificada: ${gear.filmStock}`, { from: prev.filmStock, to: gear.filmStock });
+                    setState(p => ({ ...p, currentSession: { ...p.currentSession, gearSettings: gear } }));
+                  }}
                 />
               </Card>
             </div>
@@ -475,84 +529,85 @@ const App = () => {
             <div className="space-y-10">
               <div className="flex justify-between items-end border-b border-zinc-900 pb-6">
                 <div className="flex flex-col">
-                  <h2 className="text-3xl font-mono font-black italic text-zinc-100 uppercase tracking-tighter">Archivo <span className="text-red-600">Maestro</span></h2>
+                  <h2 className="text-3xl font-mono font-black italic text-zinc-100 uppercase tracking-tighter">Archivo <span className="text-amber-600">Maestro (Vault)</span></h2>
                   <span className="text-[8px] font-mono text-zinc-700 uppercase tracking-widest mt-1">Negativos Originales Exportados</span>
                 </div>
-                <Badge color="amber">VIP ARCHIVE</Badge>
+
+                <div className="flex gap-2">
+                    <button
+                      onClick={() => setActiveTab('VAULT')}
+                      className={`px-3 py-1 rounded text-[9px] font-mono font-bold uppercase ${activeTab === 'VAULT' ? 'bg-amber-600 text-white' : 'text-zinc-600 hover:text-zinc-400'}`}
+                    >
+                      Vault
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('HISTORY')}
+                      className={`px-3 py-1 rounded text-[9px] font-mono font-bold uppercase ${activeTab === 'HISTORY' ? 'bg-amber-600 text-white' : 'text-zinc-600 hover:text-zinc-400'}`}
+                    >
+                      Historial
+                    </button>
+                </div>
               </div>
               
-              {state.savedRenders.length === 0 ? (
-                <div className="h-40 rounded-2xl border border-dashed border-zinc-900 flex items-center justify-center text-[9px] font-mono font-bold uppercase text-zinc-700 tracking-widest">Archivo vacío</div>
+              {activeTab === 'VAULT' ? (
+                state.savedRenders.length === 0 ? (
+                  <div className="h-40 rounded-2xl border border-dashed border-zinc-900 flex items-center justify-center text-[9px] font-mono font-bold uppercase text-zinc-700 tracking-widest">Archivo vacío</div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {state.savedRenders.map(r => (
+                      <ImageCard
+                        key={r.id}
+                        item={r}
+                        title={r.id.split('_')[1]}
+                        subtitle={new Date(r.createdAt).toLocaleDateString()}
+                        variant="vault"
+                        onExport={downloadHighRes}
+                        onDelete={(id) => setState(p => ({ ...p, savedRenders: p.savedRenders.filter(x => x.id !== id) }))}
+                      />
+                    ))}
+                  </div>
+                )
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  {state.savedRenders.map(r => (
-                    <Card key={r.id} title={r.id.split('_')[1]} subtitle={new Date(r.createdAt).toLocaleDateString()}>
-                      <div className="aspect-[3/4] rounded-lg overflow-hidden mb-3 border border-zinc-900 bg-zinc-950 shadow-inner relative group">
-                        <img src={r.outBase64} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4">
-                           <p className="text-[7px] font-mono text-white/60 leading-tight">{r.finalPrompt}</p>
-                        </div>
-                      </div>
-                      
-                      {/* Telemetría EXIF Strip */}
-                      <div className="flex justify-between items-center mb-5 px-1 bg-black/30 py-1 rounded border border-white/5">
-                        <div className="flex flex-col">
-                          <span className="text-[7px] font-mono text-zinc-500 uppercase">Óptica: {r.metadata?.gear?.focalLength || '50mm'}</span>
-                          <span className="text-[7px] font-mono text-zinc-500 uppercase">Film: {r.metadata?.gear?.filmStock || 'Digital'}</span>
-                        </div>
-                        <div className="flex flex-col items-end">
-                           <span className="text-[7px] font-mono text-zinc-600 uppercase">Sensor: {r.metadata?.engineMode === 'live' ? 'FullFrame' : 'Standard'}</span>
-                           <span className="text-[7px] font-mono text-zinc-700 uppercase">ID: {r.id.split('_')[1]}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <Button onClick={() => downloadHighRes(r.outBase64!, r.id)}>Exportar Original</Button>
-                        <Button variant="danger" onClick={() => setState(p => ({ ...p, savedRenders: p.savedRenders.filter(x => x.id !== r.id) }))}>Eliminar</Button>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
+                <SessionHistoryPanel
+                  events={state.auditLog}
+                  onClearHistory={() => {
+                     if (confirm("¿Confirmar eliminación total del historial de sesión?")) {
+                       // Clear state directly
+                       setState(p => ({ ...p, auditLog: [] }));
+                     }
+                  }}
+                  onExportHistory={() => {
+                     const blob = new Blob([JSON.stringify(state.auditLog, null, 2)], { type: "application/json" });
+                     saveAs(blob, `FOTOGRAFO_SESSION_LOG_${Date.now()}.json`);
+                  }}
+                />
               )}
             </div>
 
             <div className="space-y-10">
               <div className="flex justify-between items-end border-b border-zinc-900 pb-6">
                 <div className="flex flex-col">
-                  <h2 className="text-3xl font-mono font-black italic text-zinc-700 uppercase tracking-tighter">Hoja de <span className="text-zinc-800">Contactos</span></h2>
+                  <h2 className="text-3xl font-mono font-black italic text-zinc-700 uppercase tracking-tighter">Hoja de <span className="text-zinc-800">Contactos (Session)</span></h2>
                   <span className="text-[8px] font-mono text-zinc-800 uppercase tracking-widest mt-1">Tomas Recientes de la Sesión</span>
                 </div>
-                <Button variant="danger" className="text-[8px] py-1 px-3" onClick={() => setState(p => ({...p, renderLibrary: []}))}>Vaciar Carrete</Button>
+                <Button variant="danger" className="text-[8px] py-1 px-3" onClick={() => {
+                   pushAudit('SESSION_CLEAR', 'Carrete de sesión vaciado');
+                   setState(p => ({...p, renderLibrary: []}));
+                }}>Vaciar Carrete</Button>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {state.renderLibrary.map(r => (
-                  <Card key={r.id} title={r.id.split('_')[1]} subtitle={r.metadata?.usedModel || "RAW"}>
-                    <div className="aspect-[3/4] rounded-lg overflow-hidden mb-3 border border-zinc-900 bg-zinc-950 group relative">
-                      <img src={r.outBase64} className="w-full h-full object-cover transition-all duration-700 grayscale group-hover:grayscale-0" />
-                      <div className="absolute bottom-3 left-3"><Badge color="red">M: {r.metadata?.identityValidation?.matchScore}%</Badge></div>
-                    </div>
-
-                    {/* Telemetría EXIF Strip */}
-                    <div className="flex justify-between items-center mb-5 px-1 bg-black/30 py-1 rounded border border-white/5">
-                        <div className="flex flex-col">
-                          <span className="text-[7px] font-mono text-zinc-500 uppercase">Óptica: {r.metadata?.gear?.focalLength || '50mm'}</span>
-                          <span className="text-[7px] font-mono text-zinc-500 uppercase">Film: {r.metadata?.gear?.filmStock || 'Digital'}</span>
-                        </div>
-                        <div className="flex flex-col items-end">
-                           <span className="text-[7px] font-mono text-zinc-600 uppercase">Sensor: {r.metadata?.engineMode === 'live' ? 'FullFrame' : 'Standard'}</span>
-                           <span className="text-[7px] font-mono text-zinc-700 uppercase">ID: {r.id.split('_')[1]}</span>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <div className="flex gap-2">
-                        <Button variant="secondary" className="flex-1" onClick={() => downloadHighRes(r.outBase64!, r.id)}>Exportar</Button>
-                        <Button variant="primary" className="flex-1" onClick={() => saveToVault(r)}><ICONS.RENDER_VAULT /></Button>
-                      </div>
-                      <Button variant="danger" onClick={() => setState(p => ({ ...p, renderLibrary: p.renderLibrary.filter(x => x.id !== r.id) }))}>Eliminar</Button>
-                    </div>
-                  </Card>
+                  <ImageCard
+                    key={r.id}
+                    item={r}
+                    title={r.id.split('_')[1]}
+                    subtitle={r.metadata?.usedModel || "RAW"}
+                    variant="session"
+                    onExport={downloadHighRes}
+                    onSave={saveToVault}
+                    onDelete={(id) => setState(p => ({ ...p, renderLibrary: p.renderLibrary.filter(x => x.id !== id) }))}
+                  />
                 ))}
               </div>
             </div>

@@ -109,6 +109,26 @@ export interface CurrentSession {
   isThinkingMode: boolean;
 }
 
+export type AuditEventType =
+  | 'LENS_SET'
+  | 'FILM_SET'
+  | 'REVEAL_START'
+  | 'REVEAL_SUCCESS'
+  | 'REVEAL_FAIL'
+  | 'RENDER_SAVE'
+  | 'SESSION_CLEAR'
+  | 'HISTORY_CLEAR'
+  | 'ANALYSIS_ADD';
+
+export interface AuditEvent {
+  id: string;
+  ts: number;
+  type: AuditEventType;
+  label: string;
+  payload?: Record<string, unknown>;
+  sessionId?: string;
+}
+
 // Added InternalState to resolve import error in App.tsx
 export interface InternalState {
   version: string;
@@ -117,7 +137,7 @@ export interface InternalState {
   analysisLibrary: AnalysisItem[];
   renderLibrary: RenderItem[];
   savedRenders: RenderItem[];
-  auditLog: any[];
+  auditLog: AuditEvent[];
   currentSession: CurrentSession;
 }
 
