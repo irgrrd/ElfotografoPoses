@@ -36,13 +36,13 @@ export const generateRealImageGemini = async (
     
     const systemPrompt = `
 SISTEMA: EL FOTÓGRAFO PLATINUM v1.6.0
-TAREA: Revelado fotorrealista.
+TAREA: Revelado de sensor fotorrealista.
 MODELO: ${modelName}
 
-PRESERVAR IDENTIDAD: Es crítico que el sujeto sea idéntico al de la imagen de referencia.
-BLUEPRINT: ${architectPrompt}
-ESTILO: Fotorrealismo puro, sin artefactos.
-NOTAS: ${settings.customPrompt}
+PRESERVAR SUJETO: Es crítico que el modelo sea idéntico al del negativo original.
+ESQUEMA: ${architectPrompt}
+ESTILO: Fotorrealismo de laboratorio, sin artefactos.
+NOTAS DE CAMPO: ${settings.customPrompt}
 `;
 
     const imageConfig: any = {
@@ -79,7 +79,7 @@ NOTAS: ${settings.customPrompt}
       }
     }
 
-    if (!generatedBase64) throw new Error("No image data returned from API.");
+    if (!generatedBase64) throw new Error("No image data returned from Sensor.");
 
     let validation = undefined;
     if (settings.validateOutput) {
@@ -87,7 +87,7 @@ NOTAS: ${settings.customPrompt}
     }
 
     const renderItem: RenderItem = {
-      id: `RENDER_${Date.now()}`,
+      id: `REVELADO_${Date.now()}`,
       status: "final",
       provider: 'gemini',
       createdAt: new Date().toISOString(),
@@ -173,7 +173,7 @@ export const editWithNanoBanana = async (
     contents: {
       parts: [
         { inlineData: { mimeType: 'image/jpeg', data: optimizedImage.split(',')[1] || optimizedImage } },
-        { text: `Modifica esta fotografía: ${editPrompt}` },
+        { text: `Modifica este negativo fotográfico: ${editPrompt}` },
       ],
     },
   });

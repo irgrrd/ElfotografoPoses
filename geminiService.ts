@@ -22,9 +22,9 @@ export const analyzeFaceImage = async (
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const systemInstruction = `ERES EL FOTÓGRAFO - ANALISTA BIOMÉTRICO v1.6.0.
-Tu misión es extraer el "ADN facial" de la imagen proporcionada.
-Analiza con rigor forense: geometría ósea, micro-asimetrías, rasgos oculares y cutáneos.
-Realiza un razonamiento técnico profundo antes de generar el JSON final. 
+Tu misión es capturar la firma facial única del sujeto.
+Analiza con rigor fotográfico: estructura de luz, geometría ósea, rasgos oculares y textura.
+Realiza un razonamiento de laboratorio profundo antes de generar el JSON final. 
 IMPORTANTE: El JSON debe ser la única salida.`;
 
     const response = await ai.models.generateContent({
@@ -37,7 +37,7 @@ IMPORTANTE: El JSON debe ser la única salida.`;
               data: optimizedImage.split(',')[1] || optimizedImage,
             },
           },
-          { text: "Extraer ADN facial en formato JSON." },
+          { text: "Capturar firma facial en formato JSON." },
         ],
       },
       config: {
@@ -53,7 +53,7 @@ IMPORTANTE: El JSON debe ser la única salida.`;
             mouth: { type: Type.STRING },
             skin: { type: Type.STRING },
             features: { type: Type.ARRAY, items: { type: Type.STRING } },
-            analysisText: { type: Type.STRING, description: "Technical reasoning for the ADN" }
+            analysisText: { type: Type.STRING, description: "Lab reasoning for the Subject traits" }
           },
           required: ["shape", "eyes", "nose", "mouth", "skin", "features", "analysisText"],
         },
@@ -91,7 +91,7 @@ export const validateIdentityPreservation = async (
       model: modelName,
       contents: {
         parts: [
-          { text: "Determina si el sujeto es la misma persona basándote en su estructura facial." },
+          { text: "Determina si el sujeto en la ampliación es la misma persona que en el negativo original." },
           { inlineData: { mimeType: "image/jpeg", data: optOriginal.split(',')[1] || optOriginal } },
           { inlineData: { mimeType: "image/jpeg", data: optGenerated.split(',')[1] || optGenerated } }
         ]

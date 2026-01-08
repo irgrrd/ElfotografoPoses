@@ -25,6 +25,13 @@ export type AspectRatio = "1:1" | "2:3" | "3:2" | "3:4" | "4:3" | "9:16" | "16:9
 export type ImageSize = "1K" | "2K" | "4K";
 export type QualityTier = 'free' | 'premium';
 export type EngineMode = 'offline' | 'live';
+export type FocalLength = '35mm' | '50mm' | '85mm';
+export type FilmStock = 'Standard Digital' | 'Portra 400' | 'Ilford HP5' | 'CineStill 800T';
+
+export interface GearSettings {
+  focalLength: FocalLength;
+  filmStock: FilmStock;
+}
 
 export interface DarkroomSettings {
   preset: string;
@@ -75,6 +82,8 @@ export interface RenderItem {
     allScores?: number[];
     usedModel?: string;
     isMock?: boolean;
+    gear?: GearSettings;
+    engineMode?: EngineMode;
   };
 }
 
@@ -95,17 +104,19 @@ export interface CurrentSession {
   currentContext: string;
   previewImage?: string;
   darkroomSettings: DarkroomSettings;
+  gearSettings: GearSettings;
   preferredProvider: 'gemini' | 'fal-ai';
   isThinkingMode: boolean;
 }
 
+// Added InternalState to resolve import error in App.tsx
 export interface InternalState {
   version: string;
   poseBank: Pose[];
-  promptLibrary: any[]; // Extended as needed
+  promptLibrary: any[];
   analysisLibrary: AnalysisItem[];
   renderLibrary: RenderItem[];
-  savedRenders: RenderItem[]; // Persistent Vault
+  savedRenders: RenderItem[];
   auditLog: any[];
   currentSession: CurrentSession;
 }
