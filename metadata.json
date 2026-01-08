@@ -1,0 +1,7 @@
+{
+  "name": "EL FOTÓGRAFO - Poses Architect Pro v1.2.3",
+  "description": "An advanced AI-powered photography prompt architect and pose manager for professional image generation workflows.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
