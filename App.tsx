@@ -308,13 +308,13 @@ const App = () => {
             onClick={() => setEngineMode('offline')}
             className={`px-3 py-1.5 rounded-md text-[9px] font-mono font-bold uppercase tracking-widest transition-all ${engineMode === 'offline' ? 'bg-zinc-800 text-zinc-100 shadow-inner' : 'text-zinc-600 hover:text-zinc-400'}`}
           >
-            <span className="md:inline hidden">Sensor </span>Standard
+            <span className="md:inline hidden">Sensor: </span>Native (Flash)
           </button>
           <button 
             onClick={() => setEngineMode('live')}
-            className={`px-3 py-1.5 rounded-md text-[9px] font-mono font-bold uppercase tracking-widest transition-all ${engineMode === 'live' ? 'bg-red-600 text-white shadow-[0_0_20px_rgba(220,38,38,0.4)]' : 'text-zinc-600 hover:text-zinc-400'}`}
+            className={`px-3 py-1.5 rounded-md text-[9px] font-mono font-bold uppercase tracking-widest transition-all ${engineMode === 'live' ? 'bg-amber-600 text-white shadow-[0_0_20px_rgba(245,158,11,0.4)]' : 'text-zinc-600 hover:text-zinc-400'}`}
           >
-            <span className="md:inline hidden">Sensor </span>Full Frame
+            <span className="md:inline hidden">Sensor: </span>Full Frame (Pro)
           </button>
         </div>
         {engineMode === 'live' && !hasGeminiKey && (
@@ -328,13 +328,13 @@ const App = () => {
       <nav className="hidden sm:flex w-20 bg-black/40 border-r border-white/5 flex-col items-center py-10 space-y-12 z-50 hardware-panel">
         <div className="text-white font-black italic text-2xl mb-8 tracking-tighter opacity-80">F.</div>
         {[
-          { m: ViewMode.ANALYSIS, icon: <ICONS.ANALYSIS />, t: 'SUJETO' },
+          { m: ViewMode.ANALYSIS, icon: <ICONS.ANALYSIS />, t: 'SUJETO (RAW)' },
           { m: ViewMode.ARCHITECT, icon: <ICONS.ARCHITECT />, t: 'SET' },
           { m: ViewMode.DARKROOM, icon: <ICONS.DARKROOM />, t: 'LAB' },
           { m: ViewMode.RENDER_VAULT, icon: <ICONS.RENDER_VAULT />, t: 'ARCHIVO' },
           { m: ViewMode.ANALYTICS, icon: <ICONS.ANALYTICS />, t: 'BITÁCORA' }
         ].map(item => (
-          <button key={item.m} onClick={() => setView(item.m)} className={`group relative p-3 rounded-xl transition-all duration-300 ${view === item.m ? 'text-red-500 bg-red-500/5 shadow-[0_0_25px_rgba(220,38,38,0.15)] border border-red-500/20' : 'text-zinc-700 hover:text-zinc-400 hover:bg-white/5'}`}>
+          <button key={item.m} onClick={() => setView(item.m)} className={`group relative p-3 rounded-xl transition-all duration-300 ${view === item.m ? 'text-amber-500 bg-amber-500/5 shadow-[0_0_25px_rgba(245,158,11,0.15)] border border-amber-500/20' : 'text-zinc-700 hover:text-zinc-400 hover:bg-white/5'}`}>
              {item.icon}
              <span className="absolute left-full ml-5 px-2 py-1 rounded bg-black border border-white/10 text-[8px] font-mono font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity z-[100] whitespace-nowrap pointer-events-none">{item.t}</span>
           </button>
@@ -351,7 +351,7 @@ const App = () => {
             { m: ViewMode.RENDER_VAULT, icon: <ICONS.RENDER_VAULT /> },
             { m: ViewMode.ANALYTICS, icon: <ICONS.ANALYTICS /> }
           ].map(item => (
-            <button key={item.m} onClick={() => setView(item.m)} className={`p-4 rounded-xl transition-all ${view === item.m ? 'text-red-500 bg-red-500/10 border border-red-500/20' : 'text-zinc-600'}`}>
+            <button key={item.m} onClick={() => setView(item.m)} className={`p-4 rounded-xl transition-all ${view === item.m ? 'text-amber-500 bg-amber-500/10 border border-amber-500/20' : 'text-zinc-600'}`}>
               {item.icon}
             </button>
           ))}
@@ -360,12 +360,12 @@ const App = () => {
         <header className="flex flex-col mb-16 sm:mb-20">
           <div className="flex justify-between items-end">
             <div className="flex flex-col">
-              <h1 className="text-xl font-mono font-black italic text-zinc-100 uppercase tracking-tighter">EL FOTÓGRAFO <span className="text-red-600 font-normal">STUDIO MASTER</span></h1>
+              <h1 className="text-xl font-mono font-black italic text-zinc-100 uppercase tracking-tighter">EL FOTÓGRAFO: <span className="text-amber-600 font-normal">Studio Master</span></h1>
               <span className="text-[8px] font-mono font-bold text-zinc-700 tracking-[0.4em] uppercase">v1.7.0 Optica Platinum</span>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-[8px] font-mono font-bold text-zinc-600 uppercase tracking-widest">Estado Sensor:</span>
-              <div className={`w-1.5 h-1.5 rounded-full ${engineMode === 'live' ? 'bg-red-500 animate-pulse shadow-[0_0_8px_var(--safe-red)]' : 'bg-zinc-700'}`}></div>
+              <div className={`w-1.5 h-1.5 rounded-full ${engineMode === 'live' ? 'bg-amber-500 animate-pulse shadow-[0_0_8px_var(--safe-amber)]' : 'bg-zinc-700'}`}></div>
             </div>
           </div>
           <div className="w-full h-px bg-zinc-900 mt-4 opacity-50"></div>
@@ -375,21 +375,21 @@ const App = () => {
           <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-2 duration-500">
             <div className="text-center space-y-4">
               <Badge color="zinc">{engineMode === 'live' ? 'LENTE PRO 4K' : 'LENTE STANDARD'}</Badge>
-              <h2 className="text-3xl sm:text-5xl font-mono font-black text-zinc-100 italic uppercase tracking-tighter">Negativo <span className="text-red-600">Digital</span></h2>
+              <h2 className="text-3xl sm:text-5xl font-mono font-black text-zinc-100 italic uppercase tracking-tighter">Exposición de <span className="text-amber-600">Negativo</span></h2>
               <p className="text-zinc-600 text-[9px] font-mono font-bold uppercase tracking-[0.2em]">Paso 1: Exposición de la firma facial para el revelado.</p>
             </div>
             
-            <div className="h-[300px] sm:h-[400px] border-2 border-dashed border-zinc-800 rounded-3xl bg-black/20 flex flex-col items-center justify-center p-12 group hover:border-red-600/30 transition-all cursor-pointer relative overflow-hidden" onClick={() => fileInputRef.current?.click()}>
+            <div className="h-[300px] sm:h-[400px] border-2 border-dashed border-zinc-800 rounded-3xl bg-black/20 flex flex-col items-center justify-center p-12 group hover:border-amber-600/30 transition-all cursor-pointer relative overflow-hidden" onClick={() => fileInputRef.current?.click()}>
               <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} />
               {loading ? (
                 <div className="flex flex-col items-center space-y-6">
-                  <div className="w-12 h-12 border-b-2 border-red-600 rounded-full animate-spin" />
+                  <div className="w-12 h-12 border-b-2 border-amber-600 rounded-full animate-spin" />
                   <p className="text-zinc-100 font-mono text-[10px] uppercase tracking-widest animate-pulse">Analizando estructura de luz...</p>
                 </div>
               ) : (
                 <div className="text-center space-y-6">
-                  <div className="w-16 h-16 rounded-full bg-red-600/5 flex items-center justify-center mx-auto text-red-500 group-hover:scale-105 transition-transform border border-red-500/10"><ICONS.ANALYSIS /></div>
-                  <p className="text-[10px] font-mono font-bold uppercase text-zinc-600 tracking-[0.2em]">Importar Negativo</p>
+                  <div className="w-16 h-16 rounded-full bg-amber-600/5 flex items-center justify-center mx-auto text-amber-500 group-hover:scale-105 transition-transform border border-amber-500/10"><ICONS.ANALYSIS /></div>
+                  <p className="text-[10px] font-mono font-bold uppercase text-zinc-600 tracking-[0.2em]">Cargar RAW / Negativo</p>
                 </div>
               )}
               <div className="scan-line absolute w-full left-0 z-0"></div>
@@ -400,10 +400,10 @@ const App = () => {
         {view === ViewMode.ARCHITECT && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-in fade-in duration-500 pb-24 sm:pb-0">
             <div className="lg:col-span-4 space-y-8">
-              <Card title="Sujeto en Foco" subtitle={state.currentSession.facialId || "SIN EXPOSICIÓN"}>
+              <Card title="Firma Facial (ADN)" subtitle={state.currentSession.facialId || "SIN EXPOSICIÓN"}>
                 <div className="relative group aspect-[3/4] rounded-lg overflow-hidden border border-zinc-800 bg-zinc-950 shadow-2xl">
                   {state.currentSession.previewImage && <img src={state.currentSession.previewImage} className="w-full h-full object-cover grayscale opacity-80" />}
-                  <div className="absolute top-2 right-2"><Badge color="red">RAW</Badge></div>
+                  <div className="absolute top-2 right-2"><Badge color="amber">RAW</Badge></div>
                 </div>
                 {state.currentSession.facialTraits && (
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -426,7 +426,7 @@ const App = () => {
             </div>
             
             <div className="lg:col-span-8 space-y-8">
-               <Card title="Esquema de Composición">
+               <Card title="Esquema de Pose">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
                     {state.poseBank.map(p => (
                       <button key={p.id} onClick={() => setState(s => ({ ...s, currentSession: { ...s.currentSession, currentPose: p } }))} className={`p-5 rounded-lg border text-left transition-all ${state.currentSession.currentPose?.id === p.id ? 'bg-zinc-100 text-black border-zinc-100' : 'bg-black/20 border-zinc-800 text-zinc-500 hover:bg-black/30'}`}>
@@ -441,7 +441,7 @@ const App = () => {
                   <Card title="Set de Luces">
                     <div className="grid grid-cols-2 gap-2">
                       {Object.keys(STYLE_MAP).map(s => (
-                        <button key={s} onClick={() => setState(p => ({ ...p, currentSession: { ...p.currentSession, currentStyle: s as any } }))} className={`py-2 rounded-md border text-[8px] font-mono font-bold uppercase tracking-widest transition-colors ${state.currentSession.currentStyle === s ? 'bg-red-600 border-red-500 text-white' : 'bg-black/20 border-zinc-800 hover:border-zinc-700'}`}>{s}</button>
+                        <button key={s} onClick={() => setState(p => ({ ...p, currentSession: { ...p.currentSession, currentStyle: s as any } }))} className={`py-2 rounded-md border text-[8px] font-mono font-bold uppercase tracking-widest transition-colors ${state.currentSession.currentStyle === s ? 'bg-amber-600 border-amber-500 text-white' : 'bg-black/20 border-zinc-800 hover:border-zinc-700'}`}>{s}</button>
                       ))}
                     </div>
                   </Card>
@@ -459,7 +459,7 @@ const App = () => {
                </div>
                
                <Card title="Locación">
-                <input type="text" value={state.currentSession.currentContext} onChange={(e) => setState(s => ({ ...s, currentSession: { ...s.currentSession, currentContext: e.target.value } }))} placeholder="Ej: penthouse en París, estudio minimalista..." className="w-full bg-black/40 border border-zinc-800 rounded-md p-4 text-[10px] font-mono outline-none focus:border-red-900/50 transition-colors" />
+                <input type="text" value={state.currentSession.currentContext} onChange={(e) => setState(s => ({ ...s, currentSession: { ...s.currentSession, currentContext: e.target.value } }))} placeholder="Ej: penthouse en París, estudio minimalista..." className="w-full bg-black/40 border border-zinc-800 rounded-md p-4 text-[10px] font-mono outline-none focus:border-amber-900/50 transition-colors" />
                </Card>
                
                <div className="flex justify-end pt-4">
@@ -471,10 +471,10 @@ const App = () => {
 
         {view === ViewMode.DARKROOM && (
           <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in duration-500 pb-24 sm:pb-0">
-            <Card title={`Laboratorio de Revelado — ${engineMode === 'live' ? 'Full Frame' : 'Standard'}`} className="h-[500px] sm:h-[600px] relative overflow-hidden group">
+            <Card title={`Laboratorio Químico-Digital — ${engineMode === 'live' ? 'Full Frame' : 'Standard'}`} className="h-[500px] sm:h-[600px] relative overflow-hidden group">
               {darkroomLoading ? (
                 <div className="absolute inset-0 bg-black/95 flex flex-col items-center justify-center space-y-10 z-50">
-                  <div className="w-20 h-20 border border-red-600/20 rounded-full flex items-center justify-center text-red-600 shadow-[0_0_30px_rgba(220,38,38,0.1)]"><ICONS.DARKROOM /></div>
+                  <div className="w-20 h-20 border border-amber-600/20 rounded-full flex items-center justify-center text-amber-600 shadow-[0_0_30px_rgba(245,158,11,0.1)]"><ICONS.DARKROOM /></div>
                   <div className="text-center space-y-4">
                     <p className="text-zinc-100 font-mono font-black italic uppercase tracking-[0.4em] text-lg animate-pulse">Revelando Grano Fino {engineMode === 'live' ? '4K' : 'HD'}</p>
                     {retryInfo && <Badge color="amber">Filtro Biométrico: {retryInfo.score}%</Badge>}
@@ -482,14 +482,14 @@ const App = () => {
                 </div>
               ) : (
                 <div className="h-full flex flex-col items-center justify-center p-12 text-center space-y-10">
-                  <div className="w-24 h-24 rounded-full bg-red-600/5 border border-red-600/10 flex items-center justify-center mx-auto text-red-600 scale-125 mb-4 shadow-[0_0_50px_rgba(220,38,38,0.05)]"><ICONS.DARKROOM /></div>
+                  <div className="w-24 h-24 rounded-full bg-amber-600/5 border border-amber-600/10 flex items-center justify-center mx-auto text-amber-600 scale-125 mb-4 shadow-[0_0_50px_rgba(245,158,11,0.05)]"><ICONS.DARKROOM /></div>
                   <div className="space-y-4">
-                    <h3 className="text-4xl font-mono font-black italic text-zinc-100 uppercase tracking-tighter">Disparo de <span className="text-red-600">Sensor</span></h3>
+                    <h3 className="text-4xl font-mono font-black italic text-zinc-100 uppercase tracking-tighter">Disparo de <span className="text-amber-600">Sensor</span></h3>
                     <p className="text-zinc-600 text-[9px] font-mono font-bold uppercase tracking-[0.2em] max-w-sm mx-auto leading-relaxed">
                       Calibración de haz de luz activa. Lente {state.currentSession.gearSettings.focalLength} | Stock {state.currentSession.gearSettings.filmStock}.
                     </p>
                   </div>
-                  <Button onClick={handleReveal} variant="shutter" className="h-24 px-24 text-xl shadow-[0_0_60px_rgba(220,38,38,0.2)]">Disparar Revelado</Button>
+                  <Button onClick={handleReveal} variant="shutter" className="h-24 px-24 text-xl shadow-[0_0_60px_rgba(245,158,11,0.2)]">DISPARAR REVELADO</Button>
                 </div>
               )}
             </Card>
@@ -506,7 +506,7 @@ const App = () => {
               <Card title="Aspect Ratio">
                 <div className="grid grid-cols-2 gap-2">
                   {['1:1', '16:9', '9:16', '4:3'].map(r => (
-                    <button key={r} onClick={() => setState(p => ({ ...p, currentSession: { ...p.currentSession, darkroomSettings: { ...p.currentSession.darkroomSettings, aspectRatio: r as any } } }))} className={`py-2 rounded-md border text-[8px] font-mono font-bold uppercase ${state.currentSession.darkroomSettings.aspectRatio === r ? 'bg-red-600 border-red-500 text-white' : 'bg-black/20 border-zinc-800 hover:border-zinc-700'}`}>{r}</button>
+                    <button key={r} onClick={() => setState(p => ({ ...p, currentSession: { ...p.currentSession, darkroomSettings: { ...p.currentSession.darkroomSettings, aspectRatio: r as any } } }))} className={`py-2 rounded-md border text-[8px] font-mono font-bold uppercase ${state.currentSession.darkroomSettings.aspectRatio === r ? 'bg-amber-600 border-amber-500 text-white' : 'bg-black/20 border-zinc-800 hover:border-zinc-700'}`}>{r}</button>
                   ))}
                 </div>
               </Card>
@@ -618,7 +618,7 @@ const App = () => {
           <div className="max-w-5xl mx-auto space-y-12 animate-in fade-in duration-700 pb-24">
             <div className="text-center space-y-4">
                 <Badge>Telemetría v1.7.0</Badge>
-                <h2 className="text-5xl font-mono font-black text-zinc-100 italic uppercase tracking-tighter">Bitácora de <span className="text-red-600">Exposición</span></h2>
+                <h2 className="text-5xl font-mono font-black text-zinc-100 italic uppercase tracking-tighter">Bitácora de <span className="text-amber-600">Telemetría EXIF</span></h2>
                 <p className="text-zinc-600 text-[9px] font-mono font-bold uppercase tracking-[0.2em]">Rendimiento del sensor y calidad de los revelados químicos.</p>
             </div>
 
@@ -627,7 +627,7 @@ const App = () => {
                     <p className="text-4xl font-mono font-black text-white">{stats.totalGenerations}</p>
                 </Card>
                 <Card title="Eficiencia" subtitle="Match Promedio">
-                    <p className="text-4xl font-mono font-black text-red-600">{Math.round(stats.averageMatchScore)}%</p>
+                    <p className="text-4xl font-mono font-black text-amber-600">{Math.round(stats.averageMatchScore)}%</p>
                 </Card>
                 <Card title="Protocolos" subtitle="Intentos Avg">
                     <p className="text-4xl font-mono font-black text-white">{stats.averageAttempts.toFixed(1)}</p>
@@ -651,7 +651,7 @@ const App = () => {
                             </div>
                             <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden">
                                 <div 
-                                    className={`h-full transition-all duration-1000 ${row.data.avgScore > 90 ? 'bg-emerald-500' : row.data.avgScore > 80 ? 'bg-red-600' : 'bg-zinc-700'}`} 
+                                    className={`h-full transition-all duration-1000 ${row.data.avgScore > 90 ? 'bg-emerald-500' : row.data.avgScore > 80 ? 'bg-amber-600' : 'bg-zinc-700'}`}
                                     style={{ width: `${row.data.avgScore}%` }} 
                                 />
                             </div>
