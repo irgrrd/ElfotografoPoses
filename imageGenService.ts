@@ -1,120 +1,35 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { validateIdentityPreservation } from "./geminiService";
-import { RenderItem } from "./types";
+import { RenderItem, DarkroomSettings, RevealResult, RetryConfig } from "./types";
+import { analytics } from "./analyticsService";
 
-/**
- * Genera instrucciones de fidelidad basadas en el valor de strength (0-100)
- */
-const generateFidelityInstructions = (strength: number): string => {
-  // Strength controla TRANSFORMACIÓN, NO identidad
-  
-  if (strength < 30) {
-    return `MODO: RETOQUE SUTIL
-    
-TRANSFORMACIÓN:
-- Mantén la pose original con ajustes mínimos (máximo 15% de cambio)
-- Iluminación: ajustes sutiles, preserva la luz original
-- Fondo: mantén o mejora levemente el entorno actual
-- Estilo: naturalista, sin filtros dramáticos
-
-IDENTIDAD FACIAL (OBLIGATORIO):
-- Preserva al 100% todos los rasgos faciales
-- Mantén estructura ósea exacta
-- Conserva forma y color de ojos
-- Mantén forma de nariz y boca
-- Preserva tono de piel
-- Conserva marcas faciales (lunares, pecas, cicatrices)`;
-  }
-  
-  if (strength < 70) {
-    return `MODO: TRANSFORMACIÓN BALANCEADA
-    
-TRANSFORMACIÓN:
-- Pose: permite cambios moderados (30-50% de cambio)
-- Iluminación: creatividad moderada, nuevos ángulos de luz
-- Fondo: puedes cambiar completamente el entorno
-- Estilo: aplica filtros artísticos moderados
-
-IDENTIDAD FACIAL (OBLIGATORIO - PRIORIDAD MÁXIMA):
-- La identidad facial es SAGRADA y debe preservarse al 100%
-- Mantén EXACTAMENTE: estructura ósea, ojos, nariz, boca, orejas
-- Preserva tono de piel y textura
-- Conserva todas las marcas distintivas del rostro
-- El sujeto debe ser CLARAMENTE reconocible como la misma persona`;
-  }
-  
-  return `MODO: TRANSFORMACIÓN DRAMÁTICA
-  
-TRANSFORMACIÓN MÁXIMA PERMITIDA:
-- Pose: cambio radical y dinámico (hasta 80% diferente)
-- Iluminación: creatividad total, efectos dramáticos
-- Fondo: escenario completamente nuevo y creativo
-- Estilo: aplica filtros artísticos avanzados, efectos especiales
-- Composición: ángulos cinematográficos, perspectivas únicas
-
-⚠️ REGLA ABSOLUTA DE IDENTIDAD (NO NEGOCIABLE):
-La identidad facial del sujeto es INMUTABLE bajo cualquier circunstancia.
-
-ELEMENTOS QUE DEBES PRESERVAR AL 100%:
-1. Estructura ósea del rostro (mandíbula, pómulos, frente)
-2. Forma exacta y color de los ojos
-3. Forma y tamaño de la nariz
-4. Forma de la boca y labios
-5. Forma de las orejas
-6. Tono de piel base
-7. Textura de la piel
-8. Todas las marcas faciales distintivas (lunares, pecas, cicatrices, arrugas características)
-
-IMPORTANTE: Aunque la pose, iluminación y entorno cambien radicalmente, 
-cualquier persona que conozca al sujeto original debe poder identificarlo 
-inmediatamente en la imagen generada. La identidad facial NO es negociable.`;
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxRetries: 3,
+  minAcceptableScore: 85,
+  retryDelay: 1200,
+  improvementThreshold: 3
 };
 
 /**
- * MOTOR NATIVO EL FOTÓGRAFO v1.3.1
- * Flujo: Image + Text Part -> Multimodal Generation
+ * MOTOR PLATINUM NATIVO - Gemini 3 Pro Image
  */
 export const generateRealImageGemini = async (
   architectPrompt: string,
   initImageBase64: string,
-  strengthValue: number // Expects 0-1
+  settings: DarkroomSettings
 ): Promise<{ image: string, renderItem: RenderItem }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const strengthPercent = strengthValue * 100;
   
-  const fidelityInstructions = generateFidelityInstructions(strengthPercent);
+  const systemPrompt = `
+SISTEMA: EL FOTÓGRAFO PLATINUM v1.4.5
+TAREA: Revelado hiperrealista nativo de alta fidelidad.
 
-  const revelationPrompt = `
-SISTEMA: MOTOR DE REVELADO NATIVO "EL FOTÓGRAFO" v1.3.1 PLATINUM
-
-⚠️ DIRECTIVA PRINCIPAL IRREVOCABLE:
-La IDENTIDAD FACIAL del sujeto es SAGRADA. Bajo ninguna circunstancia 
-modifiques los rasgos faciales que hacen reconocible al sujeto.
-
-IMAGEN BASE (ADN):
-La imagen proporcionada contiene al sujeto cuya identidad DEBES preservar 
-al 100%. Analiza cuidadosamente sus rasgos faciales únicos.
-
-BLUEPRINT DE TRANSFORMACIÓN:
-${architectPrompt}
-
-${fidelityInstructions}
-
-INSTRUCCIONES DE EJECUCIÓN:
-1. ANALIZA los rasgos faciales únicos del sujeto en la imagen base
-2. APLICA la transformación de pose, iluminación y entorno según el blueprint
-3. GENERA la imagen respetando el blueprint PERO manteniendo la identidad facial intacta
-4. VERIFICA que el resultado sea reconocible como la misma persona
-
-ESPECIFICACIONES TÉCNICAS:
-- Resolución: 2048x2048 (2K)
-- Calidad: Máxima definición fotorrealista
-- Formato: Composición profesional según blueprint
-
-RECORDATORIO FINAL:
-Si en algún momento hay conflicto entre "creatividad/transformación" y 
-"preservación de identidad", SIEMPRE prioriza la preservación de identidad.
+INSTRUCCIONES DE MOTOR:
+- Genera una imagen fotorrealista que sea una réplica exacta del ADN facial del sujeto adjunto.
+- Renderiza con iluminación volumétrica y trazado de rayos físicamente preciso.
+- Blueprint arquitectónico: ${architectPrompt}
+- Notas de artista: ${settings.customPrompt}
 `;
 
   const response = await ai.models.generateContent({
@@ -127,81 +42,131 @@ Si en algún momento hay conflicto entre "creatividad/transformación" y
             data: initImageBase64.split(',')[1] || initImageBase64,
           },
         },
-        { text: revelationPrompt },
+        { text: systemPrompt },
       ],
     },
     config: {
       imageConfig: {
-        aspectRatio: "1:1",
-        imageSize: "2K"
+        aspectRatio: settings.aspectRatio as any,
+        imageSize: settings.resolution as any
       }
     }
   });
 
-  let generatedImage = "";
-  const parts = response.candidates?.[0]?.content?.parts;
-  if (parts) {
-    for (const part of parts) {
-      if (part.inlineData) {
-        generatedImage = `data:image/png;base64,${part.inlineData.data}`;
-        break;
-      }
+  let generatedBase64 = "";
+  const parts = response.candidates?.[0]?.content?.parts || [];
+  for (const part of parts) {
+    if (part.inlineData) {
+      generatedBase64 = `data:image/png;base64,${part.inlineData.data}`;
+      break;
     }
   }
 
-  if (!generatedImage) {
-    throw new Error("El motor nativo no devolvió un activo visual.");
+  if (!generatedBase64) throw new Error("El motor Platinum no devolvió un activo visual.");
+
+  let validation = undefined;
+  if (settings.validateOutput) {
+    validation = await validateIdentityPreservation(initImageBase64, generatedBase64);
   }
 
-  // Validar Identidad
-  const validation = await validateIdentityPreservation(initImageBase64, generatedImage);
-
-  const renderId = `PLATINUM_${Date.now()}`;
   const renderItem: RenderItem = {
-    id: renderId,
+    id: `PLATINUM_${Date.now()}`,
     status: "final",
     provider: 'gemini',
     createdAt: new Date().toISOString(),
     finalPrompt: architectPrompt,
-    outBase64: generatedImage,
-    darkroomApplied: true,
+    outBase64: generatedBase64,
     metadata: {
       identityValidation: validation,
-      strength: strengthValue,
-      timestamp: new Date().toISOString(),
-      promptUsed: revelationPrompt
+      strength: settings.strength,
+      resolution: settings.resolution,
+      aspectRatio: settings.aspectRatio
     }
   };
 
-  return { image: generatedImage, renderItem };
+  return { image: generatedBase64, renderItem };
 };
 
-export const generateRealImageFal = async (
-  apiKey: string,
-  prompt: string,
-  initImageBase64: string,
-  strength: number,
-  guidance: number,
-  steps: number
+/**
+ * EDICIÓN INTELIGENTE - Gemini 2.5 Flash Image
+ */
+export const editWithNanoBanana = async (
+  imageBase64: string,
+  editPrompt: string
 ): Promise<string> => {
-  if (!apiKey) throw new Error("Requiere API Key de Fal.ai");
-
-  const response = await fetch('https://fal.ai/models/fal-ai/flux/dev/image-to-image/api', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Key ${apiKey}`,
-      'Content-Type': 'application/json'
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-image',
+    contents: {
+      parts: [
+        { inlineData: { mimeType: 'image/jpeg', data: imageBase64.split(',')[1] || imageBase64 } },
+        { text: `Modifica esta fotografía profesionalmente: ${editPrompt}. Mantén el fotorrealismo.` },
+      ],
     },
-    body: JSON.stringify({
-      prompt,
-      image_url: initImageBase64,
-      strength,
-      guidance_scale: guidance,
-      num_inference_steps: steps,
-    })
   });
 
-  if (!response.ok) throw new Error("Error en servicio externo Fal.ai");
+  const parts = response.candidates?.[0]?.content?.parts || [];
+  for (const part of parts) {
+    if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+  }
+  throw new Error("Fallo en edición Flash.");
+};
+
+export const revealImageWithRetry = async (
+  architectPrompt: string,
+  initImageBase64: string,
+  settings: DarkroomSettings,
+  onAttempt?: (attempt: number, score: number) => void
+): Promise<RevealResult> => {
+  const startTime = Date.now();
+  let attempts = 0;
+  let bestResult: { image: string, renderItem: RenderItem } | null = null;
+  let bestScore = 0;
+  const allScores: number[] = [];
+  const maxLoops = settings.enableRetry ? DEFAULT_RETRY_CONFIG.maxRetries : 1;
+
+  while (attempts < maxLoops) {
+    attempts++;
+    try {
+      const { image, renderItem } = await generateRealImageGemini(architectPrompt, initImageBase64, settings);
+      const currentScore = renderItem.metadata?.identityValidation?.matchScore || 0;
+      allScores.push(currentScore);
+      if (onAttempt) onAttempt(attempts, currentScore);
+
+      if (currentScore > bestScore) {
+        bestScore = currentScore;
+        bestResult = { image, renderItem };
+      }
+
+      if (currentScore >= 90) break;
+      if (attempts < maxLoops) await new Promise(r => setTimeout(r, 1000));
+    } catch (error) {
+      if (attempts >= maxLoops) throw error;
+    }
+  }
+
+  if (!bestResult) throw new Error("Fallo en revelado.");
+
+  const result: RevealResult = {
+    success: bestScore >= 80,
+    renderItem: bestResult.renderItem,
+    attempts,
+    allScores,
+    finalScore: bestScore,
+    retriedDueToLowScore: attempts > 1
+  };
+  
+  analytics.logGeneration(result, settings.strength, Date.now() - startTime);
+  return result;
+};
+
+export const generateRealImageFal = async (apiKey: string, prompt: string, initImageBase64: string, strength: number, guidance: number, steps: number): Promise<string> => {
+  if (!apiKey) throw new Error("API Key Fal requerida");
+  const response = await fetch('https://fal.ai/models/fal-ai/flux/dev/image-to-image/api', {
+    method: 'POST',
+    headers: { 'Authorization': `Key ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, image_url: initImageBase64, strength, guidance_scale: guidance, num_inference_steps: steps })
+  });
   const data = await response.json();
   return data.image?.url || data.images?.[0]?.url || "";
 };

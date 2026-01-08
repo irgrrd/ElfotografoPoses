@@ -21,13 +21,20 @@ export interface IdentityValidation {
   };
 }
 
+export type AspectRatio = "1:1" | "2:3" | "3:2" | "3:4" | "4:3" | "9:16" | "16:9" | "21:9";
+export type ImageSize = "1K" | "2K" | "4K";
+
 export interface DarkroomSettings {
   preset: string;
   strength: number;
   guidance: number;
   steps: number;
   customPrompt: string;
-  validateOutput?: boolean;
+  resolution: ImageSize;
+  aspectRatio: AspectRatio;
+  identityProtection: 'maximum' | 'balanced' | 'creative';
+  validateOutput: boolean;
+  enableRetry?: boolean;
 }
 
 export interface Pose {
@@ -59,6 +66,11 @@ export interface RenderItem {
     strength?: number;
     timestamp?: string;
     promptUsed?: string;
+    resolution?: string;
+    aspectRatio?: string;
+    protectionMode?: string;
+    attempts?: number;
+    allScores?: number[];
   };
 }
 
@@ -85,12 +97,13 @@ export interface PromptItem {
 export interface AnalysisItem {
   id: string; // ADN_XXXX
   traits: FacialTraits;
+  analysisText?: string;
   timestamp: string;
   imageBase64?: string;
 }
 
 export interface AuditLog {
-  type: 'ANALYZE_DONE' | 'LIB_POSE_CREATE' | 'REVEAL_DONE' | 'SAVE_PROMPT' | 'EXPORT_ZIP' | 'ANALYZE_START' | 'ANALYZE_ERROR' | 'COPY_PROMPT' | 'FINALIZE_RENDER' | 'SYSTEM_HEALTH' | 'STORAGE_WARNING' | 'DARKROOM_APPLIED' | 'REVEAL_REAL_DONE' | 'REVEAL_REAL_ERROR';
+  type: 'ANALYZE_DONE' | 'LIB_POSE_CREATE' | 'REVEAL_DONE' | 'SAVE_PROMPT' | 'EXPORT_ZIP' | 'ANALYZE_START' | 'ANALYZE_ERROR' | 'COPY_PROMPT' | 'FINALIZE_RENDER' | 'SYSTEM_HEALTH' | 'STORAGE_WARNING' | 'DARKROOM_APPLIED' | 'REVEAL_REAL_DONE' | 'REVEAL_REAL_ERROR' | 'RETRY_ATTEMPT' | 'ANALYTICS_LOG' | 'IMAGE_EDIT_DONE';
   timestamp: string;
   details: string;
   severity?: 'info' | 'warning' | 'error';
@@ -106,6 +119,7 @@ export interface CurrentSession {
   previewImage?: string;
   darkroomSettings: DarkroomSettings;
   preferredProvider: 'gemini' | 'fal-ai';
+  isThinkingMode: boolean;
 }
 
 export interface InternalState {
@@ -126,5 +140,23 @@ export enum ViewMode {
   ENGINE = 'ENGINE',
   LIBRARY = 'LIBRARY',
   RENDER_VAULT = 'RENDER_VAULT',
-  AUDIT = 'AUDIT'
+  AUDIT = 'AUDIT',
+  GUIDE = 'GUIDE',
+  ANALYTICS = 'ANALYTICS'
+}
+
+export interface RetryConfig {
+  maxRetries: number;
+  minAcceptableScore: number;
+  retryDelay: number;
+  improvementThreshold: number;
+}
+
+export interface RevealResult {
+  success: boolean;
+  renderItem: RenderItem;
+  attempts: number;
+  allScores: number[];
+  finalScore: number;
+  retriedDueToLowScore: boolean;
 }

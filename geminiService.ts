@@ -2,10 +2,19 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { FacialTraits, IdentityValidation } from "./types";
 
-export const analyzeFaceImage = async (base64Image: string): Promise<FacialTraits> => {
+/**
+ * ESTRATEGIA DE ANÁLISIS PRO THINKING v1.4.5
+ * Extrae el ADN facial con razonamiento profundo.
+ */
+export const analyzeFaceImage = async (base64Image: string, useThinking: boolean = true): Promise<{ traits: FacialTraits, analysisText: string }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const model = 'gemini-3-flash-preview';
+  const model = 'gemini-3-pro-preview';
   
+  const systemInstruction = `ERES EL FOTÓGRAFO - ANALISTA BIOMÉTRICO v1.4.5.
+Tu misión es extraer el "ADN facial" de la imagen proporcionada.
+Analiza: geometría ósea, micro-asimetrías, rasgos únicos y condiciones lumínicas de origen.
+Realiza un razonamiento técnico profundo sobre la estructura del sujeto antes de generar el JSON final.`;
+
   const response = await ai.models.generateContent({
     model,
     contents: {
@@ -16,142 +25,89 @@ export const analyzeFaceImage = async (base64Image: string): Promise<FacialTrait
             data: base64Image.split(',')[1] || base64Image,
           },
         },
-        {
-          text: `ROLE: EL FOTÓGRAFO Vision Architect. 
-          Extrae el ADN facial y físico exacto para una reproducción por IA sin pérdida de detalles.
-          Devuelve un objeto JSON estrictamente formateado. 
-          La propiedad 'features' debe ser un array de strings que describan marcas, cicatrices, tatuajes, piercings, detalles del vello facial o geometría facial única.`,
-        },
+        { text: "Ejecuta un análisis forense de identidad y devuelve el ADN facial estructurado en JSON." },
       ],
     },
     config: {
+      systemInstruction,
       responseMimeType: "application/json",
+      thinkingConfig: useThinking ? { thinkingBudget: 32768 } : undefined,
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          shape: { type: Type.STRING, description: "Forma facial detallada (ej. ovalada, mandíbula estructurada)" },
-          eyes: { type: Type.STRING, description: "Color de ojos, forma del párpado y detalles de pestañas" },
-          nose: { type: Type.STRING, description: "Estructura del puente nasal y forma de la punta" },
-          mouth: { type: Type.STRING, description: "Grosor de labios, arco de cupido y expresión predeterminada" },
-          skin: { type: Type.STRING, description: "Tono de piel, subtono y textura aparente" },
-          features: { 
-            type: Type.ARRAY, 
-            items: { type: Type.STRING },
-            description: "Array de rasgos distintivos" 
-          },
+          shape: { type: Type.STRING },
+          eyes: { type: Type.STRING },
+          nose: { type: Type.STRING },
+          mouth: { type: Type.STRING },
+          skin: { type: Type.STRING },
+          features: { type: Type.ARRAY, items: { type: Type.STRING } },
+          analysisText: { type: Type.STRING, description: "Desglose técnico del razonamiento profundo" }
         },
-        required: ["shape", "eyes", "nose", "mouth", "skin", "features"],
+        required: ["shape", "eyes", "nose", "mouth", "skin", "features", "analysisText"],
       },
     },
   });
 
   try {
-    const jsonStr = response.text.trim();
-    const json = JSON.parse(jsonStr);
-    return json as FacialTraits;
+    const json = JSON.parse(response.text.trim());
+    return {
+      traits: {
+        shape: json.shape,
+        eyes: json.eyes,
+        nose: json.nose,
+        mouth: json.mouth,
+        skin: json.skin,
+        features: json.features
+      },
+      analysisText: json.analysisText
+    };
   } catch (e) {
-    throw new Error("Error al extraer el ADN arquitectónico: " + response.text);
+    console.error("Fallo en extracción de ADN:", e);
+    throw new Error("El motor Pro no pudo estructurar el ADN facial. Verifique la calidad de la imagen.");
   }
 };
 
 /**
- * Valida que la imagen generada mantenga la identidad del sujeto original
+ * VALIDACIÓN BIOMÉTRICA NATIVA
  */
 export const validateIdentityPreservation = async (
   originalImage: string,
   generatedImage: string
 ): Promise<IdentityValidation> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const model = 'gemini-3-flash-preview';
-
-  const validationPrompt = `
-TAREA: Análisis de Preservación de Identidad Facial
-
-IMAGEN 1 (ORIGINAL): Sujeto de referencia
-IMAGEN 2 (GENERADA): Resultado a validar
-
-ANÁLISIS REQUERIDO:
-Compara ambas imágenes y determina si representan a la MISMA persona.
-
-Evalúa similitud (0-100) en:
-1. Forma del rostro (estructura ósea)
-2. Ojos (forma, tamaño, color, separación)
-3. Nariz (forma, tamaño, ángulo)
-4. Boca (forma de labios, tamaño)
-5. Similitud general
-
-IMPORTANTE: Devuelve un JSON estrictamente válido.`;
-
-  try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: {
-        parts: [
-          { text: validationPrompt },
-          {
-            inlineData: {
-              mimeType: "image/jpeg",
-              data: originalImage.replace(/^data:image\/\w+;base64,/, '')
-            }
-          },
-          {
-            inlineData: {
-              mimeType: "image/jpeg",
-              data: generatedImage.replace(/^data:image\/\w+;base64,/, '')
-            }
-          }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            isSamePerson: { type: Type.BOOLEAN },
-            matchScore: { type: Type.NUMBER },
-            facialFeatures: {
-              type: Type.OBJECT,
-              properties: {
-                faceShape: { type: Type.NUMBER },
-                eyes: { type: Type.NUMBER },
-                nose: { type: Type.NUMBER },
-                mouth: { type: Type.NUMBER },
-                overall: { type: Type.NUMBER }
-              },
-              required: ["faceShape", "eyes", "nose", "mouth", "overall"]
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: {
+      parts: [
+        { text: "Compara estas dos imágenes. Determina si el sujeto es la misma persona basándote en su estructura facial inmutable." },
+        { inlineData: { mimeType: "image/jpeg", data: originalImage.split(',')[1] || originalImage } },
+        { inlineData: { mimeType: "image/jpeg", data: generatedImage.split(',')[1] || generatedImage } }
+      ]
+    },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          matchScore: { type: Type.NUMBER },
+          isSamePerson: { type: Type.BOOLEAN },
+          facialFeatures: {
+            type: Type.OBJECT,
+            properties: {
+              faceShape: { type: Type.NUMBER },
+              eyes: { type: Type.NUMBER },
+              nose: { type: Type.NUMBER },
+              mouth: { type: Type.NUMBER },
+              overall: { type: Type.NUMBER }
             },
-            warnings: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            }
+            required: ["faceShape", "eyes", "nose", "mouth", "overall"]
           },
-          required: ["isSamePerson", "matchScore", "facialFeatures", "warnings"]
-        }
+          warnings: { type: Type.ARRAY, items: { type: Type.STRING } }
+        },
+        required: ["matchScore", "isSamePerson", "facialFeatures", "warnings"]
       }
-    });
+    }
+  });
 
-    const validation = JSON.parse(response.text.trim());
-    
-    return {
-      matchScore: validation.matchScore,
-      isValid: validation.isSamePerson && validation.matchScore >= 85,
-      warnings: validation.warnings || [],
-      facialFeatures: validation.facialFeatures
-    };
-    
-  } catch (error) {
-    console.error("Error en validación de identidad:", error);
-    return {
-      matchScore: 0,
-      isValid: false,
-      warnings: ["Error al validar identidad"],
-      facialFeatures: {
-        faceShape: 0,
-        eyes: 0,
-        nose: 0,
-        mouth: 0,
-        overall: 0
-      }
-    };
-  }
+  return JSON.parse(response.text.trim());
 };

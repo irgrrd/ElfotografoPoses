@@ -6,708 +6,252 @@ import {
   InternalState, 
   ViewMode, 
   AuditLog, 
-  PromptItem, 
   AnalysisItem, 
-  CurrentSession,
   RenderItem,
   DarkroomSettings,
-  IdentityValidation
+  IdentityValidation,
+  RevealResult,
+  AspectRatio,
+  ImageSize
 } from './types';
-import { INITIAL_POSES, STYLE_MAP, SKIN_MAP, ICONS, NEGATIVE_DEFAULTS, DARKROOM_PRESETS, PROVIDERS } from './constants';
+import { INITIAL_POSES, STYLE_MAP, SKIN_MAP, ICONS, DARKROOM_PRESETS } from './constants';
 import { analyzeFaceImage } from './geminiService';
-import { generateRealImageFal, generateRealImageGemini } from './imageGenService';
+import { generateRealImageFal, revealImageWithRetry, editWithNanoBanana } from './imageGenService';
 
 // --- UI Components ---
 
-interface BadgeProps {
-  children?: React.ReactNode;
-  color?: string;
-  className?: string;
-}
-
-const Badge = ({ children, color = 'emerald', className = "" }: BadgeProps) => {
-    const colors: Record<string, string> = {
-        emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-        amber: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-        zinc: 'bg-zinc-800 text-zinc-400 border-zinc-700',
-        indigo: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
-        rose: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
-    };
-    return (
-        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border ${colors[color] || colors.zinc} ${className}`}>
-            {children}
-        </span>
-    );
+const Badge = ({ children, color = 'indigo' }: { children: React.ReactNode, color?: string }) => {
+  const colors: any = { indigo: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20', amber: 'bg-amber-500/10 text-amber-400 border-amber-500/20' };
+  return <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${colors[color]}`}>{children}</span>;
 };
 
-interface CardProps {
-  children?: React.ReactNode;
-  className?: string;
-  title?: string;
-  subtitle?: string;
-  key?: React.Key;
-}
-
-const Card = ({ children, className = "", title, subtitle }: CardProps) => (
-  <div className={`glass rounded-2xl overflow-hidden flex flex-col border border-white/5 shadow-2xl ${className}`}>
+const Card = ({ children, title, subtitle, className = "" }: { children: React.ReactNode, title?: string, subtitle?: string, className?: string }) => (
+  <div className={`glass rounded-[2rem] overflow-hidden border border-white/5 flex flex-col ${className}`}>
     {(title || subtitle) && (
-        <div className="px-6 py-4 border-b border-white/5 flex flex-col bg-white/[0.02]">
-            {title && <h3 className="text-xs font-black text-white uppercase italic tracking-wider flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-              {title}
-            </h3>}
-            {subtitle && <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5 ml-3.5">{subtitle}</p>}
-        </div>
+      <div className="px-6 py-4 border-b border-white/5 bg-white/[0.02]">
+        {title && <h3 className="text-[10px] font-black text-white uppercase italic tracking-widest">{title}</h3>}
+        {subtitle && <p className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest mt-0.5">{subtitle}</p>}
+      </div>
     )}
-    <div className="flex-1 p-6 relative">
-        {children}
-    </div>
+    <div className="p-6 flex-1">{children}</div>
   </div>
 );
 
-interface ButtonProps {
-  children?: React.ReactNode;
-  onClick?: () => void;
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
-  className?: string;
-  disabled?: boolean;
-}
-
-const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false }: ButtonProps) => {
-  const variants = {
-    primary: "bg-white text-black hover:bg-zinc-200 active:bg-zinc-300 shadow-[0_0_15px_rgba(255,255,255,0.1)]",
-    secondary: "bg-zinc-900 text-white hover:bg-zinc-800 border border-white/10",
-    danger: "bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20",
-    ghost: "bg-transparent text-zinc-400 hover:text-white hover:bg-white/5"
-  };
-
-  return (
-    <button 
-      onClick={onClick} 
-      disabled={disabled}
-      className={`px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all duration-300 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]} ${className}`}
-    >
-      {children}
-    </button>
-  );
-};
-
-const IdentityMatchIndicator = ({ validation }: { validation?: IdentityValidation }) => {
-  if (!validation) return null;
-  const isGood = validation.isValid;
-  return (
-    <div className={`mt-4 p-4 rounded-xl border ${isGood ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-rose-500/20 bg-rose-500/5'}`}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-black uppercase text-zinc-500">Match de Identidad</span>
-        <span className={`text-[12px] font-black ${isGood ? 'text-emerald-400' : 'text-rose-400'}`}>
-          {validation.matchScore}% {isGood ? '✓' : '⚠️'}
-        </span>
-      </div>
-      <div className="h-1 w-full bg-zinc-900 rounded-full overflow-hidden">
-        <div className={`h-full transition-all duration-1000 ${isGood ? 'bg-emerald-500' : 'bg-rose-500'}`} style={{ width: `${validation.matchScore}%` }} />
-      </div>
-      {validation.warnings.length > 0 && (
-        <ul className="mt-3 space-y-1">
-          {validation.warnings.map((w, i) => (
-            <li key={i} className="text-[8px] text-zinc-500 uppercase font-bold">• {w}</li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-};
+const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false }: { children: React.ReactNode, onClick?: () => void, variant?: 'primary' | 'secondary', className?: string, disabled?: boolean }) => (
+  <button onClick={onClick} disabled={disabled} className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 ${variant === 'primary' ? 'bg-white text-black' : 'bg-zinc-900 text-white border border-white/10'} ${className}`}>
+    {children}
+  </button>
+);
 
 // --- Main Application ---
 
 const App = () => {
-  const STORAGE_KEY = 'fotografo_state_v131_platinum_native';
-  
   const [view, setView] = useState<ViewMode>(ViewMode.ANALYSIS);
   const [loading, setLoading] = useState(false);
   const [darkroomLoading, setDarkroomLoading] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [hasGeminiKey, setHasGeminiKey] = useState(false);
+  const [retryInfo, setRetryInfo] = useState<{ attempt: number, score: number } | null>(null);
+  const [editPrompt, setEditPrompt] = useState("");
   
-  const [state, setState] = useState<InternalState>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-        try {
-            return JSON.parse(saved);
-        } catch(e) { console.error("Error cargando estado local.", e); }
+  const [state, setState] = useState<InternalState>({
+    version: "1.4.5",
+    poseBank: INITIAL_POSES,
+    promptLibrary: [],
+    analysisLibrary: [],
+    renderLibrary: [],
+    auditLog: [],
+    currentSession: {
+      facialTraits: null,
+      facialId: null,
+      currentPose: INITIAL_POSES[0],
+      currentStyle: 'natural',
+      currentSkin: 'natural',
+      currentContext: '',
+      darkroomSettings: {
+        preset: "natural", strength: 0.5, guidance: 5, steps: 30, customPrompt: "",
+        resolution: '2K', aspectRatio: '1:1', identityProtection: 'maximum',
+        validateOutput: true, enableRetry: true
+      },
+      preferredProvider: 'gemini',
+      isThinkingMode: true
     }
-    return {
-        version: "1.3.1",
-        poseBank: INITIAL_POSES,
-        promptLibrary: [],
-        analysisLibrary: [],
-        renderLibrary: [],
-        auditLog: [],
-        falApiKey: "",
-        currentSession: {
-          facialTraits: null,
-          facialId: null,
-          currentPose: INITIAL_POSES[0],
-          currentStyle: 'natural',
-          currentSkin: 'natural',
-          currentContext: '',
-          darkroomSettings: {
-            preset: "natural",
-            strength: 0.5,
-            guidance: 5,
-            steps: 30,
-            customPrompt: ""
-          },
-          preferredProvider: 'gemini'
-        }
-    };
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const checkKey = async () => {
-        if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
-            const hasKey = await window.aistudio.hasSelectedApiKey();
-            setHasGeminiKey(hasKey);
-        } else {
-            setHasGeminiKey(true);
-        }
+      const has = await window.aistudio?.hasSelectedApiKey();
+      setHasGeminiKey(!!has);
     };
     checkKey();
   }, []);
 
-  const handleSelectGeminiKey = async () => {
-    if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
-        await window.aistudio.openSelectKey();
-        setHasGeminiKey(true);
-    }
+  const handleSelectKey = async () => {
+    await window.aistudio?.openSelectKey();
+    setHasGeminiKey(true);
   };
-
-  const addLog = useCallback((type: AuditLog['type'], details: string, severity: AuditLog['severity'] = 'info') => {
-    const log: AuditLog = { 
-      type, 
-      timestamp: new Date().toISOString(), 
-      details,
-      severity
-    };
-    setState(prev => ({ ...prev, auditLog: [log, ...prev.auditLog].slice(0, 50) }));
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
 
   const handleFileUpload = async (file: File) => {
-    if (!file) return;
     setLoading(true);
-    addLog('ANALYZE_START', `Ingiriendo ADN de archivo: ${file.name}`);
-
     try {
       const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64 = event.target?.result as string;
-        try {
-          const traits = await analyzeFaceImage(base64);
-          const fid = `ADN_${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
-          const newAnalysis: AnalysisItem = {
-            id: fid,
-            traits,
-            timestamp: new Date().toISOString(),
-            imageBase64: base64
-          };
-          setState(prev => ({
-            ...prev,
-            analysisLibrary: [newAnalysis, ...prev.analysisLibrary].slice(0, 10),
-            currentSession: {
-              ...prev.currentSession,
-              facialTraits: traits,
-              facialId: fid,
-              previewImage: base64
-            }
-          }));
-          addLog('ANALYZE_DONE', `Perfil facial ${fid} estabilizado.`);
-          setView(ViewMode.ARCHITECT);
-        } catch (err) {
-          addLog('ANALYZE_ERROR', `Fallo en el escaneo: ${err instanceof Error ? err.message : 'Desconocido'}`, 'error');
-        } finally {
-          setLoading(false);
-        }
+      reader.onload = async (e) => {
+        const base64 = e.target?.result as string;
+        const result = await analyzeFaceImage(base64, state.currentSession.isThinkingMode);
+        const fid = `ADN_${Math.random().toString(36).substr(2,4).toUpperCase()}`;
+        setState(prev => ({
+          ...prev,
+          analysisLibrary: [{ id: fid, traits: result.traits, analysisText: result.analysisText, timestamp: new Date().toISOString(), imageBase64: base64 }, ...prev.analysisLibrary],
+          currentSession: { ...prev.currentSession, facialTraits: result.traits, facialId: fid, previewImage: base64 }
+        }));
+        setView(ViewMode.ARCHITECT);
       };
       reader.readAsDataURL(file);
-    } catch (err) {
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); } finally { setLoading(false); }
   };
-
-  const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") setDragActive(true);
-    else if (e.type === "dragleave") setDragActive(false);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFileUpload(e.dataTransfer.files[0]);
-  }, []);
-
-  const generatePrompt = useCallback(() => {
-    const { facialTraits, currentPose, currentStyle, currentSkin, currentContext, darkroomSettings } = state.currentSession;
-    if (!facialTraits || !currentPose) return "";
-    const dna = `person with ${facialTraits.shape} face, ${facialTraits.eyes} eyes, ${facialTraits.nose} nose, ${facialTraits.mouth} mouth, traits: ${facialTraits.features.join(', ')}`;
-    const pose = `posing as: ${currentPose.prompt}, using ${currentPose.optics.lensMm}mm lens, ${currentPose.optics.angle} angle`;
-    const style = STYLE_MAP[currentStyle];
-    const skin = SKIN_MAP[currentSkin];
-    const darkroom = `preset: ${DARKROOM_PRESETS[darkroomSettings.preset]}, ${darkroomSettings.customPrompt}`;
-    return `${dna}, ${pose}, ${style}, ${skin}, ${currentContext ? 'in ' + currentContext : ''}, ${darkroom}`.replace(/  +/g, ' ');
-  }, [state.currentSession]);
-
-  const handleSavePrompt = useCallback(() => {
-    const s = state.currentSession;
-    if (!s.facialTraits) return;
-
-    const finalPrompt = generatePrompt();
-    const newPrompt: PromptItem = {
-      id: `PRMPT_${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-      title: `Plano ${s.facialId || 'ID'} - ${s.currentPose?.name || 'Manual'}`,
-      finalPrompt,
-      blocks: [s.currentStyle, s.currentSkin, s.currentContext].filter(Boolean),
-      createdAt: new Date().toISOString(),
-      reference: {
-        previewImageBase64: s.previewImage
-      },
-      meta: {
-        provider: s.preferredProvider
-      }
-    };
-
-    setState(prev => ({
-      ...prev,
-      promptLibrary: [newPrompt, ...prev.promptLibrary].slice(0, 50)
-    }));
-    addLog('SAVE_PROMPT', `Plano ${newPrompt.id} guardado correctamente en la biblioteca.`);
-  }, [state.currentSession, addLog, generatePrompt]);
 
   const handleReveal = async () => {
     const s = state.currentSession;
     if (!s.previewImage) return;
 
+    if (!(await window.aistudio?.hasSelectedApiKey())) {
+      await handleSelectKey();
+    }
+
     setDarkroomLoading(true);
-    addLog('DARKROOM_APPLIED', `Generando revelado real con Gemini Native (Identidad Blindada)...`);
-
     try {
-        const finalPrompt = generatePrompt();
-        
-        if (s.preferredProvider === 'gemini') {
-            const { renderItem } = await generateRealImageGemini(finalPrompt, s.previewImage, s.darkroomSettings.strength);
-            
-            setState(prev => ({ 
-              ...prev, 
-              renderLibrary: [renderItem, ...prev.renderLibrary].slice(0, 15) 
-            }));
-            addLog('REVEAL_REAL_DONE', `Revelado Platinum finalizado con match del ${renderItem.metadata?.identityValidation?.matchScore}%.`);
-        } else {
-            const result = await generateRealImageFal(state.falApiKey!, finalPrompt, s.previewImage, s.darkroomSettings.strength, s.darkroomSettings.guidance, s.darkroomSettings.steps);
-            const renderId = `FLUX_${Date.now()}`;
-            const newRender: RenderItem = {
-                id: renderId,
-                status: "final",
-                provider: s.preferredProvider,
-                createdAt: new Date().toISOString(),
-                finalPrompt,
-                outUrl: result,
-                darkroomApplied: true
-            };
-            setState(prev => ({ 
-              ...prev, 
-              renderLibrary: [newRender, ...prev.renderLibrary].slice(0, 15) 
-            }));
-            addLog('REVEAL_REAL_DONE', `Revelado Flux finalizado.`);
-        }
-
-        setView(ViewMode.RENDER_VAULT);
+      const prompt = `person with ${s.facialTraits?.shape} face, ${s.facialTraits?.eyes} eyes, posing: ${s.currentPose?.prompt}. style: ${STYLE_MAP[s.currentStyle]}. environment: ${s.currentContext || 'studio'}.`;
+      const result = await revealImageWithRetry(prompt, s.previewImage, s.darkroomSettings, (attempt, score) => setRetryInfo({ attempt, score }));
+      setState(prev => ({ ...prev, renderLibrary: [result.renderItem, ...prev.renderLibrary] }));
+      setView(ViewMode.RENDER_VAULT);
     } catch (err: any) {
-        addLog('REVEAL_REAL_ERROR', `Fallo: ${err.message}`, 'error');
-        alert("Fallo en la generación real.");
-    } finally {
-        setDarkroomLoading(false);
-    }
+      if (err.message?.includes("entity was not found")) setHasGeminiKey(false);
+    } finally { setDarkroomLoading(false); setRetryInfo(null); }
   };
-
-  const exportZeroLossZip = async () => {
-    const zip = new JSZip();
-    addLog('EXPORT_ZIP', 'Generando paquete síncrono...');
-    const imagesFolder = zip.folder("revelados_platinum");
-    
-    for (const r of state.renderLibrary) {
-        const content = r.outBase64 || r.outUrl;
-        if (content) {
-            if (content.startsWith('data:')) {
-                imagesFolder?.file(`${r.id}.png`, content.split(',')[1], { base64: true });
-            } else {
-                try {
-                    const blob = await fetch(content).then(res => res.blob());
-                    imagesFolder?.file(`${r.id}.png`, blob);
-                } catch(e) { imagesFolder?.file(`${r.id}_link.txt`, content); }
-            }
-        }
-    }
-
-    zip.file("manifiesto_v131.json", JSON.stringify(state, null, 2));
-    const zipBlob = await zip.generateAsync({ type: "blob" });
-    saveAs(zipBlob, `FOTOGRAFO_PLATINUM_V131_${Date.now()}.zip`);
-  };
-
-  // --- Views ---
 
   const renderAnalysis = () => (
     <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in duration-700">
-      <div 
-        onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
-        className={`relative group cursor-pointer h-[400px] rounded-[3rem] border-2 border-dashed transition-all duration-500 flex flex-col items-center justify-center space-y-8
-          ${dragActive ? 'border-indigo-500 bg-indigo-500/10' : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05]'}`}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} />
-        <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center group-hover:scale-110 transition-transform duration-500"><ICONS.ANALYSIS /></div>
-        <div className="text-center">
-            <h2 className="text-xl font-black text-white uppercase italic tracking-widest mb-1">Ingesta de Sujeto</h2>
-            <p className="text-zinc-500 text-[9px] font-bold uppercase tracking-[0.4em]">Subir ADN Fotográfico para Procesado</p>
-        </div>
-        {loading && (
-            <div className="absolute inset-0 bg-black/80 backdrop-blur-md rounded-[3rem] flex flex-col items-center justify-center z-50">
-                <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4 shadow-[0_0_20px_#4f46e5]" />
-                <span className="text-[10px] font-black uppercase tracking-[0.5em] text-indigo-400">Analizando Biometría...</span>
-            </div>
-        )}
+      <div className="text-center space-y-4">
+        <Badge>Fase 01: Ingesta Pro Thinking</Badge>
+        <h2 className="text-5xl font-black text-white italic uppercase tracking-tighter">ADN <span className="text-indigo-500">Fotográfico</span></h2>
+        <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Extraiga la esencia biométrica mediante razonamiento profundo.</p>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="h-[400px] border-2 border-dashed border-white/10 rounded-[3rem] bg-white/[0.02] flex flex-col items-center justify-center p-12 group hover:border-indigo-500/50 transition-all cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+        <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} />
+        {loading ? <div className="animate-spin w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full" /> : <div className="text-center"><ICONS.ANALYSIS /><p className="mt-4 text-[10px] font-black uppercase text-zinc-600">Subir Negativo para Escaneo</p></div>}
+      </div>
+      <div className="grid grid-cols-4 gap-4">
         {state.analysisLibrary.map(item => (
-          <Card key={item.id} title={item.id} subtitle={new Date(item.timestamp).toLocaleString()}>
-            <div className="flex gap-5">
-                <img src={item.imageBase64} className="w-20 h-20 rounded-xl object-cover grayscale brightness-75 border border-white/5" alt="DNA" />
-                <div className="flex-1 space-y-2">
-                    <div className="flex flex-wrap gap-1"><Badge color="zinc">{item.traits.shape}</Badge><Badge color="zinc">{item.traits.skin}</Badge></div>
-                    <Button variant="ghost" className="text-[9px] p-0" onClick={() => { setState(prev => ({ ...prev, currentSession: { ...prev.currentSession, facialTraits: item.traits, facialId: item.id, previewImage: item.imageBase64 } })); setView(ViewMode.ARCHITECT); }}>Activar ADN</Button>
-                </div>
-            </div>
+          <Card key={item.id} title={item.id}>
+            <img src={item.imageBase64} className="aspect-square object-cover rounded-xl grayscale opacity-50 hover:opacity-100 transition-all cursor-pointer" onClick={() => { setState(prev => ({ ...prev, currentSession: { ...prev.currentSession, facialTraits: item.traits, facialId: item.id, previewImage: item.imageBase64 } })); setView(ViewMode.ARCHITECT); }} />
           </Card>
         ))}
       </div>
     </div>
   );
 
-  const renderArchitect = () => {
-    const s = state.currentSession;
-    return (
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-in fade-in duration-700">
-        <div className="lg:col-span-8 space-y-8">
-          <Card title="Estructura de Pose" subtitle="Blueprint para Inyección IA">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-4">
-                    <label className="text-[9px] font-black uppercase text-zinc-600 tracking-widest">PoseBank</label>
-                    <div className="grid grid-cols-1 gap-2 h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                      {state.poseBank.map(p => (
-                        <button key={p.id} onClick={() => setState(prev => ({ ...prev, currentSession: { ...prev.currentSession, currentPose: p } }))}
-                          className={`p-4 rounded-xl text-left border transition-all ${s.currentPose?.id === p.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-xl' : 'bg-white/5 border-white/5 text-zinc-500 hover:bg-white/[0.08]'}`}>
-                          <div className="text-[10px] font-black uppercase">{p.name}</div>
-                          <div className="text-[8px] opacity-60 font-mono mt-1">{p.optics.lensMm}mm • {p.optics.angle}</div>
-                        </button>
-                      ))}
-                    </div>
-                </div>
-                <div className="space-y-6">
-                   <div className="space-y-4">
-                       <label className="text-[9px] font-black uppercase text-zinc-600 tracking-widest">Estética Lumínica</label>
-                       <div className="flex flex-wrap gap-2">{Object.keys(STYLE_MAP).map(st => (<button key={st} onClick={() => setState(prev => ({ ...prev, currentSession: { ...prev.currentSession, currentStyle: st as any } }))} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase border transition-all ${s.currentStyle === st ? 'bg-white text-black border-white' : 'bg-transparent border-white/10 text-zinc-500 hover:border-white/20'}`}>{st}</button>))}</div>
-                   </div>
-                   <div className="space-y-4">
-                       <label className="text-[9px] font-black uppercase text-zinc-600 tracking-widest">Textura Dermis</label>
-                       <div className="flex flex-wrap gap-2">{Object.keys(SKIN_MAP).map(sk => (<button key={sk} onClick={() => setState(prev => ({ ...prev, currentSession: { ...prev.currentSession, currentSkin: sk as any } }))} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase border transition-all ${s.currentSkin === sk ? 'bg-white text-black border-white' : 'bg-transparent border-white/10 text-zinc-500 hover:border-white/20'}`}>{sk}</button>))}</div>
-                   </div>
-                   <div className="space-y-4">
-                       <label className="text-[9px] font-black uppercase text-zinc-600 tracking-widest">Entorno</label>
-                       <input type="text" value={s.currentContext} onChange={(e) => setState(prev => ({ ...prev, currentSession: { ...prev.currentSession, currentContext: e.target.value } }))} className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-[11px] font-mono text-indigo-300 outline-none focus:border-indigo-500" placeholder="E.G. LUXURY HOTEL, PARIS, RAINY NIGHT..." />
-                   </div>
-                </div>
-             </div>
-          </Card>
-          <Card title="Blueprint de Inyección" subtitle="Código Síncrono Compilado">
-             <div className="bg-black/60 rounded-2xl p-6 border border-white/5 min-h-[100px]"><code className="text-[10px] font-mono text-indigo-400 leading-relaxed block break-words">{generatePrompt() || "// SELECCIONE UN ADN PARA GENERAR CÓDIGO"}</code></div>
-             <div className="flex gap-4 mt-6">
-                <Button variant="primary" className="flex-1 h-12" onClick={handleSavePrompt} disabled={!s.facialTraits}>Archivar Plano</Button>
-                <Button variant="secondary" className="px-10 h-12" onClick={() => setView(ViewMode.DARKROOM)} disabled={!s.facialTraits}>Ir al Darkroom</Button>
-             </div>
-          </Card>
-        </div>
-        <div className="lg:col-span-4 space-y-6">
-           <Card title="Referencia Ingesta" subtitle={s.facialId || 'VOID'}>
-              <div className="aspect-[3/4] bg-black rounded-3xl overflow-hidden border border-white/5 shadow-2xl relative">
-                  {s.previewImage ? <img src={s.previewImage} className="w-full h-full object-cover grayscale brightness-90" alt="DNA Ref" /> : <div className="w-full h-full flex items-center justify-center font-black text-zinc-900 uppercase">Void</div>}
-                  <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_0%,rgba(0,0,0,0.8)_100%)] pointer-events-none" />
-              </div>
-           </Card>
-        </div>
+  const renderArchitect = () => (
+    <div className="grid grid-cols-12 gap-10 animate-in fade-in duration-700">
+      <div className="col-span-4 space-y-6">
+        <Card title="Referencia ADN" subtitle={state.currentSession.facialId || ""}>
+          <img src={state.currentSession.previewImage} className="w-full aspect-[3/4] object-cover rounded-2xl shadow-2xl" />
+        </Card>
+        <Card title="Edición Flash 2.5">
+          <textarea value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} placeholder="Ej: añadir gafas, cambiar luz..." className="w-full bg-black/40 border border-white/5 rounded-xl p-4 text-[10px] text-white outline-none h-24 mb-4" />
+          <Button className="w-full" onClick={async () => { 
+            const res = await editWithNanoBanana(state.currentSession.previewImage!, editPrompt); 
+            setState(p => ({ ...p, currentSession: { ...p.currentSession, previewImage: res } }));
+            setEditPrompt("");
+          }}>Aplicar Cambio</Button>
+        </Card>
       </div>
-    );
-  };
-
-  const renderDarkroom = () => {
-    const s = state.currentSession.darkroomSettings;
-    const pref = state.currentSession.preferredProvider;
-    return (
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-in slide-in-from-right-12 duration-700">
-          <div className="lg:col-span-7 space-y-6">
-              <Card title="Cámara Oscura Platinum" subtitle="Revelado Real Embebido v1.3.1">
-                  <div className="aspect-square bg-black rounded-3xl overflow-hidden border border-white/5 relative group shadow-3xl">
-                      {state.currentSession.previewImage ? <img src={state.currentSession.previewImage} className="w-full h-full object-cover" alt="Base" /> : <div className="w-full h-full flex items-center justify-center font-black">VOID</div>}
-                      {darkroomLoading && (
-                          <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center space-y-6 backdrop-blur-md z-50">
-                              <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin shadow-[0_0_30px_#4f46e5]" />
-                              <div className="text-center">
-                                  <p className="text-indigo-400 font-black tracking-[0.6em] uppercase text-[10px] animate-pulse">Revelando Nativo...</p>
-                                  <p className="text-zinc-600 text-[8px] uppercase font-bold mt-2">Motor: Gemini Platinum (Imagen 3)</p>
-                              </div>
-                          </div>
-                      )}
-                      <div className="absolute inset-0 pointer-events-none border-[24px] border-black/10" />
-                  </div>
-              </Card>
+      <div className="col-span-8 space-y-8">
+        <Card title="Configuración de Pose">
+          <div className="grid grid-cols-2 gap-3 h-[300px] overflow-y-auto custom-scrollbar pr-2">
+            {state.poseBank.map(p => (
+              <button key={p.id} onClick={() => setState(s => ({ ...s, currentSession: { ...s.currentSession, currentPose: p } }))} className={`p-4 rounded-xl border text-left transition-all ${state.currentSession.currentPose?.id === p.id ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-white/5 border-white/5 text-zinc-500'}`}>
+                <p className="text-[10px] font-black uppercase">{p.name}</p>
+                <p className="text-[8px] opacity-60 font-mono mt-1">{p.prompt}</p>
+              </button>
+            ))}
           </div>
-          <div className="lg:col-span-5 space-y-6">
-              <Card title="Configuración de Motor" subtitle="Proveedor: Gemini Native">
-                  <div className="space-y-6">
-                      <div className="grid grid-cols-1 gap-3">
-                          {PROVIDERS.map(p => (
-                              <button key={p.id} onClick={() => setState(prev => ({ ...prev, currentSession: { ...prev.currentSession, preferredProvider: p.id as any } }))}
-                                className={`p-5 rounded-2xl border text-left transition-all ${pref === p.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-xl scale-[1.02]' : 'bg-white/5 border-white/5 text-zinc-500 hover:bg-white/[0.08]'}`}>
-                                <div className="flex justify-between font-black uppercase text-[10px] mb-1">
-                                    <span className="flex items-center gap-2">{p.icon} {p.name}</span>
-                                    {pref === p.id && <Badge color="emerald">Seleccionado</Badge>}
-                                </div>
-                                <p className="text-[8px] opacity-70 uppercase leading-relaxed font-bold tracking-tight">{p.description}</p>
-                              </button>
-                          ))}
-                      </div>
-
-                      <div className="space-y-4 border-t border-white/5 pt-6">
-                          <label className="text-[9px] font-black uppercase text-zinc-600 tracking-widest flex justify-between items-center">
-                            Filtros de Darkroom
-                            <Badge color="zinc">{s.preset}</Badge>
-                          </label>
-                          <div className="grid grid-cols-3 gap-2">
-                              {Object.keys(DARKROOM_PRESETS).map(p => (
-                                  <button key={p} onClick={() => setState(prev => ({ ...prev, currentSession: { ...prev.currentSession, darkroomSettings: { ...prev.currentSession.darkroomSettings, preset: p } } }))} 
-                                    className={`p-2 rounded-xl text-[8px] font-black uppercase border transition-all ${s.preset === p ? 'bg-white text-black border-white' : 'bg-transparent text-zinc-700 border-zinc-900 hover:border-zinc-700'}`}>
-                                    {p}
-                                  </button>
-                              ))}
-                          </div>
-
-                          <div className="space-y-3">
-                              <div className="flex justify-between text-[9px] font-black">
-                                  <span className="text-zinc-600 uppercase">Nivel de Transformación (Strength)</span>
-                                  <span className="text-indigo-400">{Math.round(s.strength * 100)}%</span>
-                              </div>
-                              <input type="range" min="0.1" max="0.9" step="0.05" value={s.strength} onChange={(e) => setState(prev => ({ ...prev, currentSession: { ...prev.currentSession, darkroomSettings: { ...prev.currentSession.darkroomSettings, strength: parseFloat(e.target.value) } } }))} className="w-full accent-indigo-500" />
-                              <div className="flex justify-between text-[7px] text-zinc-800 font-bold uppercase tracking-wider">
-                                <span>Retoque Sutil (Identidad +++)</span>
-                                <span>Transformación Dramática</span>
-                              </div>
-                          </div>
-
-                          <textarea value={s.customPrompt} onChange={(e) => setState(prev => ({ ...prev, currentSession: { ...prev.currentSession, darkroomSettings: { ...prev.currentSession.darkroomSettings, customPrompt: e.target.value } } }))} placeholder="AJUSTES ADICIONALES..." className="w-full bg-black/60 border border-white/5 rounded-2xl p-4 text-[9px] font-mono text-zinc-300 h-20 outline-none focus:border-indigo-500 custom-scrollbar" />
-                      </div>
-
-                      <Button className="w-full h-16 bg-white text-black hover:bg-zinc-200 shadow-3xl flex items-center justify-center gap-3 text-sm" onClick={handleReveal} disabled={darkroomLoading}>
-                          <span className="text-lg">🟀</span> REVELAR IMAGEN REAL
-                      </Button>
-                      
-                      <div className="text-center space-y-1">
-                        <p className="text-[7px] text-zinc-800 uppercase font-black tracking-[0.2em]">PLATINUM NATIVE EMBEDDED v1.3.1</p>
-                        <p className="text-[7px] text-zinc-900 uppercase font-bold tracking-[0.1em]">La identidad facial está blindada algorítmicamente.</p>
-                      </div>
-                  </div>
-              </Card>
-          </div>
+        </Card>
+        <Card title="Entorno">
+          <input type="text" value={state.currentSession.currentContext} onChange={(e) => setState(s => ({ ...s, currentSession: { ...s.currentSession, currentContext: e.target.value } }))} placeholder="Ej: callejón neón en Tokio..." className="w-full bg-black/40 border border-white/5 rounded-xl p-5 text-sm outline-none" />
+        </Card>
+        <div className="flex justify-end"><Button onClick={() => setView(ViewMode.DARKROOM)} className="h-16 px-16 text-lg">Ir al Darkroom</Button></div>
       </div>
-    );
-  };
-
-  const renderVault = () => (
-    <div className="space-y-12 animate-in fade-in duration-700">
-       <div className="flex justify-between items-end border-b border-white/5 pb-8">
-          <div>
-            <h2 className="text-5xl font-black text-white italic uppercase leading-none">La Bóveda</h2>
-            <p className="text-zinc-600 text-[10px] font-black uppercase tracking-[0.5em] mt-3">Revelados Zero-Loss Platinum</p>
-          </div>
-          <Button className="h-14 px-12 bg-emerald-600 text-white" onClick={exportZeroLossZip}>EXPORTAR ARCHIVO ZIP</Button>
-       </div>
-       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-          {state.renderLibrary.map(render => (
-            <Card key={render.id} title={render.id} subtitle={new Date(render.createdAt).toLocaleString()} className="group hover:scale-[1.02] transition-transform duration-500">
-                <div className="aspect-square bg-black rounded-3xl overflow-hidden border border-white/5 mb-4 relative shadow-3xl">
-                  <img src={render.outUrl || render.outBase64} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-[8s]" alt="Render" />
-                  <div className="absolute top-3 right-3 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Badge color={render.provider === 'fal-ai' ? 'amber' : 'indigo'}>{render.provider}</Badge>
-                  </div>
-                </div>
-                
-                <IdentityMatchIndicator validation={render.metadata?.identityValidation} />
-
-                <div className="flex gap-2 mt-4">
-                  <Button variant="secondary" className="text-[9px] flex-1 h-9" onClick={() => window.open(render.outUrl || render.outBase64 || '', '_blank')}>Ver HD</Button>
-                  <Button variant="danger" className="w-9 h-9 flex items-center justify-center p-0" onClick={() => setState(prev => ({ ...prev, renderLibrary: prev.renderLibrary.filter(r => r.id !== render.id) }))}>
-                      <ICONS.Trash />
-                  </Button>
-                </div>
-            </Card>
-          ))}
-       </div>
     </div>
   );
 
-  const renderAudit = () => {
-    const usage = JSON.stringify(state).length;
-    const limit = 5 * 1024 * 1024;
-    const pct = (usage / limit) * 100;
-    return (
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-in slide-in-from-right-12">
-        <div className="lg:col-span-4 space-y-8">
-          <Card title="Estado del Sistema" subtitle="Almacenamiento Platinum">
-            <div className="space-y-8">
-                <div className="space-y-4">
-                  <div className="flex justify-between text-[10px] font-mono">
-                    <span className="text-zinc-600 uppercase tracking-widest">Sincronización Local</span>
-                    <span className={pct > 80 ? "text-rose-500 font-black" : "text-white"}>{pct.toFixed(2)}%</span>
-                  </div>
-                  <div className="h-2 bg-zinc-950 rounded-full overflow-hidden border border-white/5">
-                    <div className={`h-full transition-all duration-[2s] ${pct > 80 ? 'bg-rose-500' : 'bg-indigo-500'}`} style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-[9px] font-mono uppercase">
-                  <div className="bg-black/40 p-4 rounded-xl border border-white/5"><span className="text-zinc-600 block mb-1">Versión</span>v1.3.1_PL</div>
-                  <div className="bg-black/40 p-4 rounded-xl border border-white/5"><span className="text-zinc-600 block mb-1">Motor</span>NATIVE</div>
-                </div>
+  const renderDarkroom = () => (
+    <div className="max-w-4xl mx-auto space-y-12 animate-in fade-in duration-700 text-center">
+      <Card title="Cámara Oscura Platinum" className="h-[600px] relative">
+        {darkroomLoading ? (
+          <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center space-y-8 z-50">
+            <div className="w-20 h-20 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            <div className="space-y-2">
+              <p className="text-white font-black italic uppercase tracking-widest">Revelando en Calidad Nativa...</p>
+              {retryInfo && <Badge color="amber">Fidelidad: {retryInfo.score}% (Intento {retryInfo.attempt})</Badge>}
             </div>
-          </Card>
-        </div>
-        <div className="lg:col-span-8">
-          <Card title="Telemetría" subtitle="Log de Operaciones Síncronas">
-            <div className="space-y-3 h-[600px] overflow-y-auto pr-4 custom-scrollbar">
-              {state.auditLog.map((log, i) => (
-                <div key={i} className="flex items-center gap-5 p-4 rounded-xl border border-white/5 bg-white/[0.01]">
-                  <Badge color={log.severity === 'error' ? 'rose' : log.severity === 'warning' ? 'amber' : 'emerald'} className="shrink-0">{log.type}</Badge>
-                  <p className="text-[10px] text-zinc-500 truncate flex-1">{log.details}</p>
-                  <span className="text-[8px] text-zinc-800 font-mono">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                </div>
-              ))}
+          </div>
+        ) : (
+          <div className="h-full flex flex-col items-center justify-center space-y-10">
+            <div className="w-24 h-24 rounded-full bg-white/5 flex items-center justify-center mx-auto animate-pulse text-indigo-400"><ICONS.DARKROOM /></div>
+            <div className="space-y-4">
+              <h3 className="text-4xl font-black italic text-white uppercase tracking-tighter">Proceso <span className="text-indigo-500">Platinum</span></h3>
+              <p className="text-zinc-500 text-xs uppercase font-bold tracking-widest max-w-md mx-auto">Motor Gemini 3 Pro Image Activo. Generación nativa sin dependencias externas.</p>
             </div>
-          </Card>
-        </div>
-      </div>
-    );
-  };
+            <Button onClick={handleReveal} className="h-20 px-24 text-xl shadow-[0_0_50px_rgba(79,70,229,0.2)]">Iniciar Revelado</Button>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen flex bg-[#010101] text-zinc-300 font-sans overflow-hidden">
-      
+    <div className="min-h-screen bg-[#010101] text-zinc-300 font-sans flex overflow-hidden">
       {!hasGeminiKey && view !== ViewMode.ANALYSIS && (
-          <div className="fixed inset-0 bg-black/95 backdrop-blur-2xl z-[200] flex items-center justify-center p-8 animate-in fade-in duration-500">
-              <Card className="w-full max-w-lg p-12 text-center space-y-10" title="Motor Platinum Desconectado" subtitle="Activación Gemini Multimodal">
-                  <div className="w-24 h-24 rounded-full bg-indigo-600/10 flex items-center justify-center mx-auto text-indigo-400"><ICONS.Key /></div>
-                  <p className="text-zinc-500 text-[11px] uppercase font-bold tracking-widest leading-relaxed">
-                    Para el revelado nativo 2K Platinum, active su clave de API de Google AI Studio vinculada a un proyecto de pago.
-                  </p>
-                  <Button variant="primary" className="w-full h-16 text-lg" onClick={handleSelectGeminiKey}>VINCULAR CLAVE DE API</Button>
-              </Card>
-          </div>
+        <div className="fixed inset-0 bg-black/98 z-[200] flex items-center justify-center p-8 backdrop-blur-3xl animate-in fade-in">
+          <Card title="Motor Desconectado" className="max-w-lg p-12 text-center space-y-10">
+            <div className="w-20 h-20 rounded-full bg-indigo-500/10 flex items-center justify-center mx-auto text-indigo-400"><ICONS.Key /></div>
+            <p className="text-zinc-500 text-[11px] uppercase font-black tracking-widest leading-relaxed">Vincule su clave de Google AI Studio para habilitar el motor Platinum 4K.</p>
+            <Button className="w-full h-16" onClick={handleSelectKey}>Vincular Clave Nativa</Button>
+            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="block text-[8px] text-zinc-700 underline uppercase font-black">Guía de Facturación Pro</a>
+          </Card>
+        </div>
       )}
-
-      {showSettings && (
-          <div className="fixed inset-0 bg-black/90 backdrop-blur-3xl z-[100] flex items-center justify-center p-8 animate-in fade-in">
-              <Card className="w-full max-w-lg p-12 space-y-10" title="Ajustes Externos" subtitle="Servicios de Terceros">
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-zinc-600 tracking-widest flex items-center gap-2">Fal.ai API Key</label>
-                    <input type="password" value={state.falApiKey} onChange={(e) => setState(prev => ({ ...prev, falApiKey: e.target.value }))}
-                        placeholder="f-..." className="w-full bg-black border border-white/10 rounded-2xl p-5 text-xs font-mono text-emerald-400 outline-none focus:border-emerald-500" />
-                  </div>
-                  <Button variant="primary" className="w-full h-12" onClick={() => setShowSettings(false)}>Guardar Cambios</Button>
-              </Card>
-          </div>
-      )}
-
-      <nav className="w-24 bg-black border-r border-white/5 flex flex-col items-center py-12 space-y-10 z-50">
-        <div className="text-white font-black italic text-3xl mb-8 drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">FA</div>
-        {[
-          { mode: ViewMode.ANALYSIS, icon: <ICONS.ANALYSIS />, title: "Ingesta" },
-          { mode: ViewMode.ARCHITECT, icon: <ICONS.ARCHITECT />, title: "Planos" },
-          { mode: ViewMode.DARKROOM, icon: <ICONS.DARKROOM />, title: "Darkroom" },
-          { mode: ViewMode.LIBRARY, icon: <ICONS.LIBRARY />, title: "Archivo" },
-          { mode: ViewMode.RENDER_VAULT, icon: <ICONS.RENDER_VAULT />, title: "Bóveda" },
-          { mode: ViewMode.AUDIT, icon: <ICONS.AUDIT />, title: "Auditoría" }
-        ].map(item => (
-          <button key={item.mode} onClick={() => setView(item.mode)} title={item.title}
-            className={`p-5 rounded-[2rem] transition-all duration-500 ${view === item.mode ? 'bg-indigo-600 text-white shadow-[0_0_30px_#4f46e5] scale-110' : 'text-zinc-800 hover:text-white hover:bg-white/5'}`}>
-            {item.icon}
+      <nav className="w-24 bg-black border-r border-white/5 flex flex-col items-center py-12 space-y-8 z-50">
+        <div className="text-white font-black italic text-3xl mb-8">FA</div>
+        {[ViewMode.ANALYSIS, ViewMode.ARCHITECT, ViewMode.DARKROOM, ViewMode.RENDER_VAULT].map(m => (
+          <button key={m} onClick={() => setView(m)} className={`p-4 rounded-3xl transition-all ${view === m ? 'bg-indigo-600 text-white shadow-2xl' : 'text-zinc-800 hover:text-white'}`}>
+             {m === ViewMode.ANALYSIS && <ICONS.ANALYSIS />}
+             {m === ViewMode.ARCHITECT && <ICONS.ARCHITECT />}
+             {m === ViewMode.DARKROOM && <ICONS.DARKROOM />}
+             {m === ViewMode.RENDER_VAULT && <ICONS.RENDER_VAULT />}
           </button>
         ))}
-        <div className="flex-1"></div>
-        <button onClick={() => setShowSettings(true)} className="p-5 text-zinc-800 hover:text-white transition-colors"><ICONS.Key /></button>
       </nav>
-
-      <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        <header className="h-20 border-b border-white/5 flex items-center justify-between px-12 bg-black/50 backdrop-blur-3xl z-40">
-          <div className="flex items-center space-x-8">
-            <h1 className="text-lg font-black italic uppercase text-white leading-none">EL FOTÓGRAFO <span className="text-[9px] block font-mono text-zinc-700 tracking-[0.5em] mt-1 uppercase">Platinum Native v1.3.1</span></h1>
-            <Badge color={state.currentSession.preferredProvider === 'gemini' ? 'indigo' : 'amber'}>Provider: {state.currentSession.preferredProvider.toUpperCase()}</Badge>
-          </div>
-          <button onClick={exportZeroLossZip} className="p-3.5 rounded-2xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-all"><ICONS.Export /></button>
+      <main className="flex-1 overflow-y-auto p-12 custom-scrollbar relative">
+        <header className="flex justify-between items-center mb-12">
+          <h1 className="text-xl font-black italic text-white uppercase">EL FOTÓGRAFO <span className="text-[9px] block text-zinc-700 mt-1">Native v1.4.5 Platinum</span></h1>
+          <Badge>Engine: Gemini 3 Pro</Badge>
         </header>
-
-        <div className="flex-1 overflow-y-auto p-12 custom-scrollbar bg-[#020202]">
-          <div className="max-w-[1600px] mx-auto pb-32">
-            {view === ViewMode.ANALYSIS && renderAnalysis()}
-            {view === ViewMode.ARCHITECT && renderArchitect()}
-            {view === ViewMode.DARKROOM && renderDarkroom()}
-            {view === ViewMode.LIBRARY && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {state.promptLibrary.map(item => (
-                        <Card key={item.id} title={item.title} subtitle={new Date(item.createdAt).toLocaleString()} className="group hover:border-indigo-500/40">
-                            <div className="flex gap-6">
-                                {item.reference?.previewImageBase64 && <img src={item.reference.previewImageBase64} className="w-20 h-20 rounded-2xl object-cover grayscale border border-white/5" alt="Ref" />}
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-[11px] text-zinc-500 line-clamp-2 italic mb-4">"{item.finalPrompt}"</p>
-                                  <Button variant="secondary" className="text-[9px] h-8 px-4" onClick={() => navigator.clipboard.writeText(item.finalPrompt)}>Copiar Blueprint</Button>
-                                </div>
-                            </div>
-                        </Card>
-                    ))}
-                </div>
-            )}
-            {view === ViewMode.RENDER_VAULT && renderVault()}
-            {view === ViewMode.AUDIT && renderAudit()}
+        {view === ViewMode.ANALYSIS && renderAnalysis()}
+        {view === ViewMode.ARCHITECT && renderArchitect()}
+        {view === ViewMode.DARKROOM && renderDarkroom()}
+        {view === ViewMode.RENDER_VAULT && (
+          <div className="grid grid-cols-3 gap-10 animate-in fade-in duration-700">
+            {state.renderLibrary.map(r => (
+              <Card key={r.id} title={r.id} subtitle={new Date(r.createdAt).toLocaleString()}>
+                <img src={r.outBase64} className="w-full aspect-[4/5] object-cover rounded-2xl mb-4" />
+                <Button variant="secondary" className="w-full" onClick={() => r.outBase64 && saveAs(r.outBase64, `${r.id}.png`)}>Descargar 4K</Button>
+              </Card>
+            ))}
           </div>
-        </div>
-
-        <div className="h-10 bg-black/90 border-t border-white/5 px-12 flex items-center justify-between text-[9px] font-mono text-zinc-800 uppercase tracking-widest z-40">
-           <div className="flex gap-10">
-              <span className="flex items-center gap-2 font-black">ADN: {state.currentSession.facialId || 'VOID'}</span>
-              <span>RENDER_CAP: {state.renderLibrary.length}/15</span>
-           </div>
-           <div className="flex gap-6 items-center">
-              <span className="text-zinc-600">v1.3.1_PLATINUM</span>
-              <span className="text-emerald-500">STABLE</span>
-           </div>
-        </div>
+        )}
       </main>
-      <style dangerouslySetInnerHTML={{ __html: `
-        .shadow-3xl { box-shadow: 0 40px 100px -20px rgba(0,0,0,1); }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.05); border-radius: 10px; }
-      `}} />
     </div>
   );
 };
