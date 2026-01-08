@@ -1,9 +1,11 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { validateIdentityPreservation } from "./geminiService";
-import { RenderItem, DarkroomSettings, RevealResult, RetryConfig } from "./types";
+import { RenderItem, DarkroomSettings, RevealResult, RetryConfig, EngineMode } from "./types";
 import { analytics } from "./analyticsService";
 import { validateWithAdaptiveThresholds } from "./validationThresholds";
+import { executeWithFallback } from "./modelManager";
+import { resizeImage } from "./imageUtils";
 
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
   maxRetries: 3,
@@ -13,133 +15,128 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
 };
 
 /**
- * MOTOR PLATINUM NATIVO - Gemini 3 Pro Image
+ * PLATINUM ENGINE v1.6.0 - No Mocks
  */
 export const generateRealImageGemini = async (
   architectPrompt: string,
   initImageBase64: string,
-  settings: DarkroomSettings
-): Promise<{ image: string, renderItem: RenderItem }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  settings: DarkroomSettings,
+  mode: EngineMode = 'live'
+): Promise<{ image: string, renderItem: RenderItem, usedModel: string }> => {
   
-  const systemPrompt = `
-SISTEMA: EL FOTÓGRAFO PLATINUM v1.5.0
-TAREA: Revelado hiperrealista nativo.
+  // Choose model stack based on mode
+  const stack = mode === 'live' 
+    ? ["gemini-3-pro-image-preview", "gemini-2.5-flash-image"] // Pro tries both
+    : ["gemini-2.5-flash-image"]; // Native/Live simple goes straight to flash
 
-REGLAS DE ORO:
-- Debes preservar la identidad facial del sujeto de la imagen de referencia con un 100% de fidelidad.
-- El estilo debe ser fotorrealista, evitando artefactos de IA.
-- Sigue el blueprint: ${architectPrompt}
-- Notas adicionales: ${settings.customPrompt}
+  const optimizedImageBase64 = await resizeImage(initImageBase64, 1024);
+
+  const execution = await executeWithFallback('IMAGE', async (modelName) => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const systemPrompt = `
+SISTEMA: EL FOTÓGRAFO PLATINUM v1.6.0
+TAREA: Revelado fotorrealista.
+MODELO: ${modelName}
+
+PRESERVAR IDENTIDAD: Es crítico que el sujeto sea idéntico al de la imagen de referencia.
+BLUEPRINT: ${architectPrompt}
+ESTILO: Fotorrealismo puro, sin artefactos.
+NOTAS: ${settings.customPrompt}
 `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-image-preview',
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: initImageBase64.split(',')[1] || initImageBase64,
+    const imageConfig: any = {
+      aspectRatio: settings.aspectRatio,
+    };
+
+    // Only Pro models support specific imageSize
+    if (!modelName.includes('flash')) {
+      imageConfig.imageSize = settings.resolution;
+    }
+
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: optimizedImageBase64.split(',')[1] || optimizedImageBase64,
+            },
           },
-        },
-        { text: systemPrompt },
-      ],
-    },
-    config: {
-      imageConfig: {
-        aspectRatio: settings.aspectRatio as any,
-        imageSize: settings.resolution as any
+          { text: systemPrompt },
+        ],
+      },
+      config: { imageConfig }
+    });
+
+    let generatedBase64 = "";
+    const parts = response.candidates?.[0]?.content?.parts || [];
+    for (const part of parts) {
+      if (part.inlineData) {
+        generatedBase64 = `data:image/png;base64,${part.inlineData.data}`;
+        break;
       }
     }
-  });
 
-  let generatedBase64 = "";
-  const parts = response.candidates?.[0]?.content?.parts || [];
-  for (const part of parts) {
-    if (part.inlineData) {
-      generatedBase64 = `data:image/png;base64,${part.inlineData.data}`;
-      break;
+    if (!generatedBase64) throw new Error("No image data returned from API.");
+
+    let validation = undefined;
+    if (settings.validateOutput) {
+      validation = await validateIdentityPreservation(initImageBase64, generatedBase64);
     }
-  }
 
-  if (!generatedBase64) throw new Error("Fallo crítico: El motor nativo no devolvió un activo visual.");
+    const renderItem: RenderItem = {
+      id: `RENDER_${Date.now()}`,
+      status: "final",
+      provider: 'gemini',
+      createdAt: new Date().toISOString(),
+      finalPrompt: architectPrompt,
+      outBase64: generatedBase64,
+      metadata: {
+        identityValidation: validation,
+        strength: settings.strength,
+        resolution: settings.resolution,
+        aspectRatio: settings.aspectRatio,
+        usedModel: modelName
+      }
+    };
 
-  let validation = undefined;
-  if (settings.validateOutput) {
-    validation = await validateIdentityPreservation(initImageBase64, generatedBase64);
-  }
+    return { image: generatedBase64, renderItem };
+  }, stack);
 
-  const renderItem: RenderItem = {
-    id: `PLATINUM_${Date.now()}`,
-    status: "final",
-    provider: 'gemini',
-    createdAt: new Date().toISOString(),
-    finalPrompt: architectPrompt,
-    outBase64: generatedBase64,
-    metadata: {
-      identityValidation: validation,
-      strength: settings.strength,
-      resolution: settings.resolution,
-      aspectRatio: settings.aspectRatio
-    }
-  };
-
-  return { image: generatedBase64, renderItem };
-};
-
-/**
- * EDICIÓN INTELIGENTE - Gemini 2.5 Flash Image
- */
-export const editWithNanoBanana = async (
-  imageBase64: string,
-  editPrompt: string
-): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-image',
-    contents: {
-      parts: [
-        { inlineData: { mimeType: 'image/jpeg', data: imageBase64.split(',')[1] || imageBase64 } },
-        { text: `Modifica esta fotografía manteniendo el fotorrealismo: ${editPrompt}` },
-      ],
-    },
-  });
-
-  const parts = response.candidates?.[0]?.content?.parts || [];
-  for (const part of parts) {
-    if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
-  }
-  throw new Error("Fallo en edición Flash.");
+  return { ...execution.result, usedModel: execution.usedModel };
 };
 
 export const revealImageWithRetry = async (
   architectPrompt: string,
   initImageBase64: string,
   settings: DarkroomSettings,
+  mode: EngineMode = 'live',
   onAttempt?: (attempt: number, score: number) => void
 ): Promise<RevealResult> => {
   const startTime = Date.now();
   let attempts = 0;
-  let bestResult: { image: string, renderItem: RenderItem } | null = null;
+  let bestResult: { image: string, renderItem: RenderItem, usedModel: string } | null = null;
   let bestScore = 0;
   const allScores: number[] = [];
-  const maxLoops = settings.enableRetry ? DEFAULT_RETRY_CONFIG.maxRetries : 1;
+  const maxLoops = (settings.enableRetry && mode === 'live') ? DEFAULT_RETRY_CONFIG.maxRetries : 1;
 
   while (attempts < maxLoops) {
     attempts++;
     try {
-      const { image, renderItem } = await generateRealImageGemini(architectPrompt, initImageBase64, settings);
+      const { image, renderItem, usedModel } = await generateRealImageGemini(architectPrompt, initImageBase64, settings, mode);
       const currentScore = renderItem.metadata?.identityValidation?.matchScore || 0;
       allScores.push(currentScore);
       if (onAttempt) onAttempt(attempts, currentScore);
 
-      if (currentScore > bestScore) {
+      if (currentScore > bestScore || attempts === 1) {
         bestScore = currentScore;
-        bestResult = { image, renderItem };
+        bestResult = { image, renderItem, usedModel };
       }
 
-      // Sentinel Adaptive Validation
+      if (mode === 'offline') break; // Native/Free only one attempt for speed
+
       const validation = validateWithAdaptiveThresholds(currentScore, settings.strength);
       if (validation.isValid) break; 
       
@@ -150,10 +147,10 @@ export const revealImageWithRetry = async (
     }
   }
 
-  if (!bestResult) throw new Error("Fallo en el pipeline de revelado.");
+  if (!bestResult) throw new Error("Revelado fallido.");
 
   const result: RevealResult = {
-    success: bestScore >= 75,
+    success: bestScore >= 75 || mode === 'offline',
     renderItem: bestResult.renderItem,
     attempts,
     allScores,
@@ -165,17 +162,25 @@ export const revealImageWithRetry = async (
   return result;
 };
 
-export const generateRealImageFal = async (apiKey: string, prompt: string, initImageBase64: string, strength: number, guidance: number, steps: number): Promise<string> => {
-  if (!apiKey) throw new Error("API Key Fal requerida");
-  // Fix: Remove duplicate 'Content-Type' and ensure only correct headers are sent.
-  const response = await fetch('https://fal.ai/models/fal-ai/flux/dev/image-to-image/api', {
-    method: 'POST',
-    headers: { 
-      'Authorization': `Key ${apiKey}`, 
-      'Content-Type': 'application/json' 
+export const editWithNanoBanana = async (
+  imageBase64: string,
+  editPrompt: string
+): Promise<string> => {
+  const optimizedImage = await resizeImage(imageBase64, 1024);
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-image',
+    contents: {
+      parts: [
+        { inlineData: { mimeType: 'image/jpeg', data: optimizedImage.split(',')[1] || optimizedImage } },
+        { text: `Modifica esta fotografía: ${editPrompt}` },
+      ],
     },
-    body: JSON.stringify({ prompt, image_url: initImageBase64, strength, guidance_scale: guidance, num_inference_steps: steps })
   });
-  const data = await response.json();
-  return data.image?.url || data.images?.[0]?.url || "";
+
+  const parts = response.candidates?.[0]?.content?.parts || [];
+  for (const part of parts) {
+    if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
+  }
+  throw new Error("Edición fallida.");
 };

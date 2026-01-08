@@ -2,9 +2,9 @@
 export interface FacialTraits {
   shape: string;
   eyes: string;
-  nose: string;
-  mouth: string;
-  skin: string;
+  nose?: string;
+  mouth?: string;
+  skin?: string;
   features: string[];
 }
 
@@ -23,6 +23,8 @@ export interface IdentityValidation {
 
 export type AspectRatio = "1:1" | "2:3" | "3:2" | "3:4" | "4:3" | "9:16" | "16:9" | "21:9";
 export type ImageSize = "1K" | "2K" | "4K";
+export type QualityTier = 'free' | 'premium';
+export type EngineMode = 'offline' | 'live';
 
 export interface DarkroomSettings {
   preset: string;
@@ -51,7 +53,7 @@ export interface Pose {
 export interface RenderItem {
   id: string;
   status: "draft" | "final";
-  provider: "manual" | "gemini" | "fal-ai";
+  provider: "manual" | "gemini" | "fal-ai" | "mock";
   model?: string;
   seed?: string | number;
   createdAt: string;
@@ -71,42 +73,17 @@ export interface RenderItem {
     protectionMode?: string;
     attempts?: number;
     allScores?: number[];
-  };
-}
-
-export interface PromptItem {
-  id: string;
-  title: string;
-  finalPrompt: string;
-  negativePrompt?: string;
-  blocks: string[];
-  createdAt: string;
-  reference?: {
-    previewImageBase64?: string;
-    renderId?: string;
-    outUrl?: string;
-    thumbBase64?: string;
-  };
-  meta?: {
-    provider: string;
-    model?: string;
-    seed?: number | string;
+    usedModel?: string;
+    isMock?: boolean;
   };
 }
 
 export interface AnalysisItem {
-  id: string; // ADN_XXXX
+  id: string;
   traits: FacialTraits;
   analysisText?: string;
   timestamp: string;
   imageBase64?: string;
-}
-
-export interface AuditLog {
-  type: 'ANALYZE_DONE' | 'LIB_POSE_CREATE' | 'REVEAL_DONE' | 'SAVE_PROMPT' | 'EXPORT_ZIP' | 'ANALYZE_START' | 'ANALYZE_ERROR' | 'COPY_PROMPT' | 'FINALIZE_RENDER' | 'SYSTEM_HEALTH' | 'STORAGE_WARNING' | 'DARKROOM_APPLIED' | 'REVEAL_REAL_DONE' | 'REVEAL_REAL_ERROR' | 'RETRY_ATTEMPT' | 'ANALYTICS_LOG' | 'IMAGE_EDIT_DONE';
-  timestamp: string;
-  details: string;
-  severity?: 'info' | 'warning' | 'error';
 }
 
 export interface CurrentSession {
@@ -125,12 +102,12 @@ export interface CurrentSession {
 export interface InternalState {
   version: string;
   poseBank: Pose[];
-  promptLibrary: PromptItem[];
+  promptLibrary: any[]; // Extended as needed
   analysisLibrary: AnalysisItem[];
   renderLibrary: RenderItem[];
-  auditLog: AuditLog[];
+  savedRenders: RenderItem[]; // Persistent Vault
+  auditLog: any[];
   currentSession: CurrentSession;
-  falApiKey?: string;
 }
 
 export enum ViewMode {
@@ -145,13 +122,6 @@ export enum ViewMode {
   ANALYTICS = 'ANALYTICS'
 }
 
-export interface RetryConfig {
-  maxRetries: number;
-  minAcceptableScore: number;
-  retryDelay: number;
-  improvementThreshold: number;
-}
-
 export interface RevealResult {
   success: boolean;
   renderItem: RenderItem;
@@ -160,4 +130,11 @@ export interface RevealResult {
   finalScore: number;
   retriedDueToLowScore: boolean;
   error?: string;
+}
+
+export interface RetryConfig {
+  maxRetries: number;
+  minAcceptableScore: number;
+  retryDelay: number;
+  improvementThreshold: number;
 }
